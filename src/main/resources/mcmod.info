@@ -1,0 +1,20 @@
+[
+{
+  "modid" : "generallaymansaestheticspyingscreen",
+  "name" : "GeneralLaymansAestheticSpyingScreen",
+  "version" : "${version}",
+  "url" : "http://ichun.me/mods/general-laymans-aesthetic-spying-screen/",
+  "credits" : "",
+  "authorList": [
+    "iChun"
+  ],
+  "description": "Also known as GLASS",
+  "updateUrl" : "",
+  "parent" : "",
+  "screenshots": [
+  ],
+  "dependencies": [
+    "forge", "ichunutil"
+  ]
+}
+]
