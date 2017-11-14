@@ -1,10 +1,13 @@
 package me.ichun.mods.glass.common.tileentity;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.EnumFacing;
 
 public class TileEntityGlassMaster extends TileEntityGlassBase
 {
     public boolean powered;
+    public String setChannel = "public:Channel 1";
 
     @Override
     public void update()
@@ -14,14 +17,33 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
 
     public void changeRedstoneState(boolean newState)
     {
-
+        if(!setChannel.isEmpty() && (!active || channel.equalsIgnoreCase(setChannel)))
+        {
+            if(newState)
+            {
+                active = true;
+                channel = setChannel;
+                distance = 1;
+                activeFaces.add(EnumFacing.NORTH);
+            }
+            else
+            {
+                active = false;
+                activeFaces.clear();
+            }
+            fadeoutTime = TileEntityGlassBase.FADEOUT_TIME;
+            propagateTime = TileEntityGlassBase.PROPAGATE_TIME;
+            IBlockState state = getWorld().getBlockState(getPos());
+            getWorld().notifyBlockUpdate(getPos(), state, state, 3);
+        }
     }
 
     @Override
     public NBTTagCompound writeToNBT(NBTTagCompound tag)
     {
         super.writeToNBT(tag);
-        tag.setBoolean("powered", this.powered);
+        tag.setBoolean("powered", powered);
+        tag.setString("setChannel", setChannel);
         return tag;
     }
 
@@ -29,7 +51,8 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
     public void readFromNBT(NBTTagCompound tag)
     {
         super.readFromNBT(tag);
-        this.powered = tag.getBoolean("powered");
+        powered = tag.getBoolean("powered");
+        setChannel = tag.getString("setChannel");
     }
 
 }
