@@ -8,6 +8,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
 {
     public boolean powered;
     public String setChannel = "public:Channel 1";
+    public EnumFacing placingFace = EnumFacing.NORTH;
 
     @Override
     public void update()
@@ -24,12 +25,11 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
                 active = true;
                 channel = setChannel;
                 distance = 1;
-                activeFaces.add(EnumFacing.NORTH);
+                activeFaces.add(placingFace);
             }
             else
             {
                 active = false;
-                activeFaces.clear();
             }
             fadeoutTime = TileEntityGlassBase.FADEOUT_TIME;
             propagateTime = TileEntityGlassBase.PROPAGATE_TIME;
@@ -44,6 +44,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
         super.writeToNBT(tag);
         tag.setBoolean("powered", powered);
         tag.setString("setChannel", setChannel);
+        tag.setInteger("placingFace", placingFace.getIndex());
         return tag;
     }
 
@@ -53,6 +54,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
         super.readFromNBT(tag);
         powered = tag.getBoolean("powered");
         setChannel = tag.getString("setChannel");
+        placingFace = EnumFacing.getFront(tag.getInteger("placingFace"));
     }
 
 }

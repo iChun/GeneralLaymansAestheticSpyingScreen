@@ -17,6 +17,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
 import javax.annotation.Nullable;
+import java.util.HashSet;
 
 public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileEntityProvider
 {
@@ -54,7 +55,6 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     {
         if(!worldIn.isRemote)
         {
-            //TODO propagate &&             checkFacesToTurnOn(base);
             TileEntity tileentity = worldIn.getTileEntity(pos);
             if(tileentity instanceof TileEntityGlassBase)
             {
@@ -67,10 +67,27 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
                     TileEntityGlassBase base1 = (TileEntityGlassBase)tileentity1;
                     if(base.active)
                     {
-                        base.checkFacesToTurnOn(base);
-                        if(!base1.active || base1.channel.equals(base.channel))
+                        HashSet<EnumFacing> propagationFaces = new HashSet<>();
+                        for(EnumFacing facing : base.activeFaces)
                         {
-                            base1.bePropagatedTo(base, base.channel, base.active);
+                            propagationFaces.addAll(TileEntityGlassBase.PROPAGATION_FACES.get(facing));
+                        }
+                        for(EnumFacing facing : propagationFaces)
+                        {
+                            BlockPos pos1 = pos.offset(facing, -1);
+                            TileEntity te = worldIn.getTileEntity(pos1);
+                            if(te instanceof TileEntityGlassBase)
+                            {
+                                TileEntityGlassBase base2 = (TileEntityGlassBase)te;
+                                if(base2.active && base2.channel.equals(base.channel) && base2.distance < base.distance) //this is the origin
+                                {
+                                    base.checkFacesToTurnOn(base2);
+                                    if(!base1.active || base1.channel.equals(base.channel))
+                                    {
+                                        base1.bePropagatedTo(base, base.channel, base.active);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -81,7 +98,12 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
                     if(base.active)
                     {
                         int distance = base.distance;
-                        for(EnumFacing facing : EnumFacing.VALUES)
+                        HashSet<EnumFacing> propagationFaces = new HashSet<>();
+                        for(EnumFacing facing : base.activeFaces)
+                        {
+                            propagationFaces.addAll(TileEntityGlassBase.PROPAGATION_FACES.get(facing));
+                        }
+                        for(EnumFacing facing : propagationFaces)
                         {
                             BlockPos pos1 = pos.offset(facing);
                             TileEntity te = worldIn.getTileEntity(pos1);
@@ -97,6 +119,22 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
                         if(distance == base.distance)
                         {
                             base.bePropagatedTo(base, base.channel, false); //turn off if we can't find a close base.
+                        }
+                        else
+                        {
+                            for(EnumFacing facing : propagationFaces)
+                            {
+                                BlockPos pos1 = pos.offset(facing, -1);
+                                TileEntity te = worldIn.getTileEntity(pos1);
+                                if(te instanceof TileEntityGlassBase)
+                                {
+                                    TileEntityGlassBase base2 = (TileEntityGlassBase)te;
+                                    if(base2.active && base2.channel.equals(base.channel) && base2.distance < base.distance) //this is the origin
+                                    {
+                                        base.checkFacesToTurnOn(base2);
+                                    }
+                                }
+                            }
                         }
                     }
                 }

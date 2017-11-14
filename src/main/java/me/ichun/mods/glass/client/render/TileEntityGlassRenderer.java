@@ -24,29 +24,24 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
 
         GlStateManager.color(1F, 1F, 1F, 1F);
 
-        float alpha = MathHelper.clamp((te.fadeoutTime - partialTick) / (float)TileEntityGlassBase.FADEOUT_TIME, 0F, 1F);
-        if(te.active)
-        {
-            alpha = 1F - alpha;
-        }
         //Render Plane
-//        if(te.active)
-        {
-            GlStateManager.disableTexture2D();
-            GlStateManager.disableLighting();
-            GlStateManager.disableNormalize();
-            GlStateManager.enableBlend();
-            GlStateManager.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
-            GlStateManager.alphaFunc(GL11.GL_GREATER, 0.00625F);
-            GlStateManager.enableCull();
-            OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240F, 240F);
-            double pushback = 0.501D;
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableLighting();
+        GlStateManager.disableNormalize();
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+        GlStateManager.alphaFunc(GL11.GL_GREATER, 0.00625F);
+        GlStateManager.enableCull();
+        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240F, 240F);
 
-            Tessellator tessellator = Tessellator.getInstance();
-            BufferBuilder bufferbuilder = tessellator.getBuffer();
-            
-            for(EnumFacing face : te.activeFaces)
+        //TEMP MASTER DRAW
+        float alpha = 1F;
+        if(te instanceof TileEntityGlassMaster)
+        {
+            for(EnumFacing face : EnumFacing.VALUES)
             {
+                Tessellator tessellator = Tessellator.getInstance();
+                BufferBuilder bufferbuilder = tessellator.getBuffer();
                 GlStateManager.pushMatrix();
                 int horiOrient = (face.getAxis() == EnumFacing.Axis.Y ? EnumFacing.UP : face).getOpposite().getHorizontalIndex();
                 GlStateManager.rotate((face.getIndex() > 0 ? 180F : 0F) + -horiOrient * 90F, 0F, 1F, 0F);
@@ -54,27 +49,68 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
                 {
                     GlStateManager.rotate(face == EnumFacing.UP ? -90F : 90F, 1F, 0F, 0F);
                 }
-                GlStateManager.translate(0F, 0F, pushback);
 
-                float halfSize = 0.5F;
+                float halfSize = 0.3F;
                 bufferbuilder.begin(7, DefaultVertexFormats.POSITION_COLOR);
-                bufferbuilder.pos(-halfSize,  halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
-                bufferbuilder.pos(-halfSize, -halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
-                bufferbuilder.pos( halfSize, -halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
-                bufferbuilder.pos( halfSize,  halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
+                bufferbuilder.pos(-halfSize, halfSize, 0F).color(1F, 0F, 0F, alpha).endVertex();
+                bufferbuilder.pos(-halfSize, -halfSize, 0F).color(1F, 0F, 0F, alpha).endVertex();
+                bufferbuilder.pos(halfSize, -halfSize, 0F).color(1F, 0F, 0F, alpha).endVertex();
+                bufferbuilder.pos(halfSize, halfSize, 0F).color(1F, 0F, 0F, alpha).endVertex();
                 tessellator.draw();
 
                 GlStateManager.popMatrix();
             }
-            int i = te.getWorld().getCombinedLight(te.getPos(), 0);
-            OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, (float)(i % 65536) / 1.0F, (float)(i / 65536) / 1.0F);
-            GlStateManager.disableBlend();
-            GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1F);
-            GlStateManager.enableNormalize();
-            GlStateManager.enableLighting();
-            GlStateManager.enableTexture2D();
         }
-        
+        //TEMP MASTER DRAW
+
+            alpha = MathHelper.clamp((te.fadeoutTime - partialTick) / (float)TileEntityGlassBase.FADEOUT_TIME, 0F, 1F);
+        if(te.active)
+        {
+            alpha = 1F - alpha;
+        }
+
+        if(alpha > 0D)
+        {
+            drawPlanes(te, alpha);
+        }
+
+        int i = te.getWorld().getCombinedLight(te.getPos(), 0);
+        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, (float)(i % 65536) / 1.0F, (float)(i / 65536) / 1.0F);
+        GlStateManager.disableBlend();
+        GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1F);
+        GlStateManager.enableNormalize();
+        GlStateManager.enableLighting();
+        GlStateManager.enableTexture2D();
+
         GlStateManager.popMatrix();
+    }
+
+    public void drawPlanes(TileEntityGlassBase te, float alpha)
+    {
+        double pushback = 0.501D;
+        Tessellator tessellator = Tessellator.getInstance();
+        BufferBuilder bufferbuilder = tessellator.getBuffer();
+
+        for(EnumFacing face : te.activeFaces)
+        {
+            GlStateManager.pushMatrix();
+            int horiOrient = (face.getAxis() == EnumFacing.Axis.Y ? EnumFacing.UP : face).getOpposite().getHorizontalIndex();
+            GlStateManager.rotate((face.getIndex() > 0 ? 180F : 0F) + -horiOrient * 90F, 0F, 1F, 0F);
+            if(face.getAxis() == EnumFacing.Axis.Y)
+            {
+                GlStateManager.rotate(face == EnumFacing.UP ? -90F : 90F, 1F, 0F, 0F);
+            }
+            GlStateManager.translate(0F, 0F, pushback);
+
+            float halfSize = 0.501F;
+            bufferbuilder.begin(7, DefaultVertexFormats.POSITION_COLOR);
+            bufferbuilder.pos(-halfSize,  halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
+            bufferbuilder.pos(-halfSize, -halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
+            bufferbuilder.pos( halfSize, -halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
+            bufferbuilder.pos( halfSize,  halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
+            tessellator.draw();
+
+            GlStateManager.popMatrix();
+        }
     }
 }

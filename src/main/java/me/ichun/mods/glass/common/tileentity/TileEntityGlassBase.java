@@ -10,9 +10,27 @@ import net.minecraft.util.ITickable;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 
 public class TileEntityGlassBase extends TileEntity implements ITickable
 {
+    public static final HashMap<EnumFacing, ArrayList<EnumFacing>> PROPAGATION_FACES = new HashMap<>();
+    static
+    {
+        for(EnumFacing face : EnumFacing.VALUES)
+        {
+            ArrayList<EnumFacing> faces = PROPAGATION_FACES.computeIfAbsent(face, v -> new ArrayList<>());
+            for(EnumFacing face1 : EnumFacing.VALUES)
+            {
+                if(!face1.getAxis().equals(face.getAxis()))
+                {
+                    faces.add(face1);
+                }
+            }
+        }
+    }
+
     public static int FADEOUT_TIME = 12;
     public static int PROPAGATE_TIME = 2;
 
@@ -30,11 +48,15 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
         if(fadeoutTime > 0)
         {
             fadeoutTime--;
+            if(!active && fadeoutTime == 0)
+            {
+                activeFaces.clear();
+            }
         }
         if(propagateTime > 0)
         {
             propagateTime--;
-            if(propagateTime == 0)
+            if(!world.isRemote && propagateTime == 0)
             {
                 propagate();
             }
@@ -44,7 +66,12 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
     public void propagate() //do I need to send active state, channel, online/offline, block change/init propagation?
     {
         //DO STUFF
-        for(EnumFacing facing : EnumFacing.VALUES)
+        HashSet<EnumFacing> propagationFaces = new HashSet<>();
+        for(EnumFacing facing : activeFaces)
+        {
+            propagationFaces.addAll(PROPAGATION_FACES.get(facing));
+        }
+        for(EnumFacing facing : propagationFaces)
         {
             BlockPos pos = this.getPos().offset(facing);
             TileEntity te = getWorld().getTileEntity(pos);
@@ -57,17 +84,22 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
         {
             channel = "";
             distance = 0;
+            IBlockState state = getWorld().getBlockState(getPos());
+            getWorld().notifyBlockUpdate(getPos(), state, state, 3);
         }
     }
 
     public void bePropagatedTo(TileEntityGlassBase base, String newChannel, boolean activate)
     {
         boolean flag = false;
-        if(active && activate && channel.equalsIgnoreCase(newChannel) && distance > base.distance + 1) //same channel and both activated but this is further than the other from master.
+        if(active && activate && channel.equalsIgnoreCase(newChannel)) //same channel and both activated but this is further than the other from master.
         {
-            distance = base.distance + 1;
-            checkFacesToTurnOn(base);
-            flag = true;
+            if(distance > base.distance + 1)
+            {
+                distance = base.distance + 1;
+                checkFacesToTurnOn(base);
+                flag = true;
+            }
         }
         if(activate && !active && (distance > base.distance || distance == 0)) //turn on
         {
@@ -86,7 +118,7 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
             }
             else
             {
-                propagateTime = TileEntityGlassBase.PROPAGATE_TIME + 2;
+                propagateTime = TileEntityGlassBase.PROPAGATE_TIME + 1;
                 IBlockState state = getWorld().getBlockState(getPos());
                 getWorld().notifyBlockUpdate(getPos(), state, state, 3);
             }
@@ -106,7 +138,59 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
         if(origin != this)
         {
             activeFaces.clear();
-            activeFaces.addAll(origin.activeFaces);
+            activeFaces.addAll(origin.activeFaces); //check origin location and remove that active face.
+            if(activeFaces.size() > 1)
+            {
+                for(int i = activeFaces.size() - 1; i >= 0; i--)
+                {
+                    EnumFacing facing = activeFaces.get(i);
+                    BlockPos facePos = getPos().offset(facing, -1);
+                    TileEntity te = getWorld().getTileEntity(facePos);
+                    if(te instanceof TileEntityGlassBase && ((TileEntityGlassBase)te).distance < distance)
+                    {
+                        activeFaces.remove(i);
+                        continue;
+                    }
+                    facePos = getPos().offset(facing);
+                    te = getWorld().getTileEntity(facePos);
+                    if(te instanceof TileEntityGlassBase && ((TileEntityGlassBase)te).distance < distance)
+                    {
+                        activeFaces.remove(i);
+                        continue;
+                    }
+                }
+            }
+
+            HashSet<EnumFacing> newFaces = new HashSet<>();
+            for(EnumFacing facing : activeFaces)
+            {
+                BlockPos facePos = getPos().offset(facing);
+                TileEntity te = getWorld().getTileEntity(facePos);
+                if(te instanceof TileEntityGlassBase)
+                {
+                    BlockPos originPos = origin.getPos().offset(facing);
+                    EnumFacing newFace = EnumFacing.getFacingFromVector(originPos.getX() - facePos.getX(), originPos.getY() - facePos.getY(), originPos.getZ() - facePos.getZ());
+                        newFaces.add(newFace);
+                }
+                else
+                {
+                    facePos = getPos().offset(facing, -1);
+                    te = getWorld().getTileEntity(facePos);
+                    if(te instanceof TileEntityGlassBase)
+                    {
+                        BlockPos originPos = origin.getPos().offset(facing, -1);
+                        EnumFacing newFace = EnumFacing.getFacingFromVector(facePos.getX() - originPos.getX(), facePos.getY() - originPos.getY(), facePos.getZ() - originPos.getZ());
+                        if(!newFaces.contains(newFace))
+                        {
+                            newFaces.add(newFace);
+                        }
+                    }
+                }
+            }
+            activeFaces.addAll(newFaces);
+
+            IBlockState state = getWorld().getBlockState(getPos());
+            getWorld().notifyBlockUpdate(getPos(), state, state, 3);
         }
     }
 
