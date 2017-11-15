@@ -42,15 +42,25 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
     public int distance = 0; //distance = 0 also means off
     public int propagateTime = 0;
 
+    public int fadePropagate;
+    public int fadeDistance;
+
     @Override
     public void update()
     {
         if(fadeoutTime > 0)
         {
             fadeoutTime--;
-            if(!active && fadeoutTime == 0)
+            if(fadeoutTime == 0)
             {
-                activeFaces.clear();
+                if(!active)
+                {
+                    activeFaces.clear();
+                }
+                if(fadeDistance > 0)
+                {
+                    fadeDistance = 0;
+                }
             }
         }
         if(propagateTime > 0)
@@ -59,6 +69,42 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
             if(!world.isRemote && propagateTime == 0)
             {
                 propagate();
+            }
+        }
+        if(fadePropagate > 0)
+        {
+            fadePropagate--;
+            if(world.isRemote && fadePropagate == 0)
+            {
+                fadePropagate();
+            }
+        }
+    }
+
+    public void fadePropagate()
+    {
+        if(fadeDistance <= 0 || !active)
+        {
+            return;
+        }
+        HashSet<EnumFacing> propagationFaces = new HashSet<>();
+        for(EnumFacing facing : activeFaces)
+        {
+            propagationFaces.addAll(PROPAGATION_FACES.get(facing));
+        }
+        for(EnumFacing facing : propagationFaces)
+        {
+            BlockPos pos = this.getPos().offset(facing);
+            TileEntity te = getWorld().getTileEntity(pos);
+            if(te instanceof TileEntityGlassBase)
+            {
+                TileEntityGlassBase base = (TileEntityGlassBase)te;
+                if(base.active && base.channel.equalsIgnoreCase(channel) && base.fadeDistance <= fadeDistance)
+                {
+                    base.fadeoutTime = FADEOUT_TIME;
+                    base.fadePropagate = PROPAGATE_TIME;
+                    base.fadeDistance = fadeDistance - 1;
+                }
             }
         }
     }

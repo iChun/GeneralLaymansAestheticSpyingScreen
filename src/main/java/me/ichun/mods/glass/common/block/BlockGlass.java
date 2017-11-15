@@ -1,7 +1,9 @@
 package me.ichun.mods.glass.common.block;
 
+import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
+import me.ichun.mods.glass.common.tileentity.TileEntityGlassWireless;
 import net.minecraft.block.Block;
 import net.minecraft.block.ITileEntityProvider;
 import net.minecraft.block.material.Material;
@@ -9,6 +11,7 @@ import net.minecraft.block.properties.PropertyBool;
 import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.creativetab.CreativeTabs;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -18,23 +21,60 @@ import net.minecraft.world.World;
 
 import javax.annotation.Nullable;
 import java.util.HashSet;
+import java.util.Random;
 
 public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileEntityProvider
 {
     public static final PropertyBool MASTER = PropertyBool.create("master");
+    public static final PropertyBool WIRELESS = PropertyBool.create("wireless");
+
 
     public BlockGlass(Material materialIn, boolean ignoreSimilarity)
     {
         super(materialIn, ignoreSimilarity);
         this.setCreativeTab(CreativeTabs.REDSTONE);
-        this.setDefaultState(this.blockState.getBaseState().withProperty(MASTER, false));
+        this.setDefaultState(this.blockState.getBaseState().withProperty(MASTER, false).withProperty(WIRELESS, false));
+    }
+
+    @Override
+    public int quantityDropped(Random random)
+    {
+        return 1;
+    }
+
+    @Override
+    public int damageDropped(IBlockState state)
+    {
+        return getMetaFromState(state);
+    }
+
+    @Override
+    public void onBlockClicked(World worldIn, BlockPos pos, EntityPlayer playerIn)
+    {
+        if(worldIn.isRemote)
+        {
+            TileEntity te = worldIn.getTileEntity(pos);
+            if(te instanceof TileEntityGlassBase)
+            {
+                TileEntityGlassBase base = (TileEntityGlassBase)te;
+                if(base.active)
+                {
+                    GeneralLaymansAestheticSpyingScreen.eventHandlerClient.clickedPos = pos;
+
+                    base.fadeoutTime = TileEntityGlassBase.FADEOUT_TIME;
+                    base.fadePropagate = TileEntityGlassBase.PROPAGATE_TIME;
+                    base.fadeDistance = 2;
+                    base.fadePropagate();
+                }
+            }
+        }
     }
 
     @Nullable
     @Override
     public TileEntity createNewTileEntity(World worldIn, int meta)
     {
-        return meta == 1 ? new TileEntityGlassMaster() : new TileEntityGlassBase();
+        return meta == 1 ? new TileEntityGlassMaster() : meta == 2 ? new TileEntityGlassWireless() : new TileEntityGlassBase();
     }
 
     @Override
@@ -47,6 +87,7 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     public void getSubBlocks(CreativeTabs itemIn, NonNullList<ItemStack> items)
     {
         items.add(new ItemStack(this, 1, 1));
+        items.add(new ItemStack(this, 1, 2));
         items.add(new ItemStack(this, 1, 0));
     }
 
@@ -157,18 +198,18 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     @Override
     public BlockStateContainer createBlockState()
     {
-        return new BlockStateContainer(this, MASTER);
+        return new BlockStateContainer(this, MASTER, WIRELESS);
     }
 
     @Override
     public IBlockState getStateFromMeta(int meta)
     {
-        return this.getDefaultState().withProperty(MASTER, meta == 1);
+        return this.getDefaultState().withProperty(MASTER, meta == 1).withProperty(WIRELESS, meta == 2);
     }
 
     @Override
     public int getMetaFromState(IBlockState state)
     {
-        return state.getValue(MASTER) ? 1 : 0;
+        return state.getValue(WIRELESS) ? 2 : state.getValue(MASTER) ? 1 : 0;
     }
 }

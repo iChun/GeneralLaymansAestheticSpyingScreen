@@ -14,12 +14,12 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-public class EventHandler
+public class EventHandlerServer
 {
     @SubscribeEvent
     public void onRegisterBlock(RegistryEvent.Register<Block> event)
     {
-        GeneralLaymansAestheticSpyingScreen.blockGlass = (new BlockGlass(Material.GLASS, false)).setRegistryName(GeneralLaymansAestheticSpyingScreen.MOD_ID, "block_glass").setUnlocalizedName("glass.block.glass").setHardness(0.5F);
+        GeneralLaymansAestheticSpyingScreen.blockGlass = (new BlockGlass(Material.GLASS, false)).setRegistryName(GeneralLaymansAestheticSpyingScreen.MOD_ID, "block_glass").setUnlocalizedName("glass.block.glass").setHardness(0.8F);
 
         event.getRegistry().register(GeneralLaymansAestheticSpyingScreen.blockGlass);
     }
@@ -28,14 +28,5 @@ public class EventHandler
     public void onRegisterItem(RegistryEvent.Register<Item> event)
     {
         event.getRegistry().register(new ItemGlass(GeneralLaymansAestheticSpyingScreen.blockGlass).setRegistryName(GeneralLaymansAestheticSpyingScreen.blockGlass.getRegistryName()));
-    }
-
-
-    @SideOnly(Side.CLIENT)
-    @SubscribeEvent
-    public void onModelRegistry(ModelRegistryEvent event)
-    {
-        ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(GeneralLaymansAestheticSpyingScreen.blockGlass), 0, new ModelResourceLocation("generallaymansaestheticspyingscreen:block_glass", "inventory"));
-        ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(GeneralLaymansAestheticSpyingScreen.blockGlass), 1, new ModelResourceLocation("generallaymansaestheticspyingscreen:block_glass", "inventory"));
     }
 }

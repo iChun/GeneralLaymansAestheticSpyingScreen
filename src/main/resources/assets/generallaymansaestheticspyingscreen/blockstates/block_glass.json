@@ -1,7 +1,9 @@
 {
     "variants": {
         "normal": { "model": "glass" },
-        "master=false":    { "model": "glass" },
-        "master=true":    { "model": "glass" }
+        "master=false,wireless=false":    { "model": "glass" },
+        "master=true,wireless=false":    { "model": "glass" },
+        "master=false,wireless=true":    { "model": "glass" },
+        "master=true,wireless=true":    { "model": "glass" }
     }
 }

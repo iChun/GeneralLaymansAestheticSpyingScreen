@@ -29,7 +29,7 @@ public class ItemGlass extends ItemBlock
     @Override
     public String getUnlocalizedName(ItemStack stack)
     {
-        return super.getUnlocalizedName() + "." + (stack.getMetadata() == 0 ? "base" : "master");
+        return super.getUnlocalizedName() + "." + (stack.getMetadata() == 2 ? "wireless" : stack.getMetadata() == 0 ? "base" : "master");
     }
 
     @Override
