@@ -8,6 +8,7 @@ import me.ichun.mods.ichunutil.common.core.network.PacketChannel;
 import me.ichun.mods.ichunutil.common.iChunUtil;
 import me.ichun.mods.ichunutil.common.module.update.UpdateChecker;
 import net.minecraft.block.Block;
+import net.minecraft.util.SoundEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
@@ -40,6 +41,8 @@ public class GeneralLaymansAestheticSpyingScreen
 
     public static Block blockGlass;
     public static Block blockGlassTerminal;
+
+    public static SoundEvent soundAmb;
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event)

@@ -8,6 +8,8 @@ import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemBlock;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.SoundEvent;
 import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
@@ -27,7 +29,14 @@ public class EventHandlerServer
     public void onRegisterItem(RegistryEvent.Register<Item> event)
     {
         event.getRegistry().register(new ItemGlass(GeneralLaymansAestheticSpyingScreen.blockGlass).setRegistryName(GeneralLaymansAestheticSpyingScreen.blockGlass.getRegistryName()));
-
         event.getRegistry().register(new ItemBlock(GeneralLaymansAestheticSpyingScreen.blockGlassTerminal).setRegistryName(GeneralLaymansAestheticSpyingScreen.blockGlassTerminal.getRegistryName()));
+    }
+
+    @SubscribeEvent
+    public void onRegisterSound(RegistryEvent.Register<SoundEvent> event)
+    {
+        GeneralLaymansAestheticSpyingScreen.soundAmb = new SoundEvent(new ResourceLocation("generallaymansaestheticspyingscreen", "amb")).setRegistryName(new ResourceLocation("generallaymansaestheticspyingscreen", "amb"));
+
+        event.getRegistry().register(GeneralLaymansAestheticSpyingScreen.soundAmb);
     }
 }

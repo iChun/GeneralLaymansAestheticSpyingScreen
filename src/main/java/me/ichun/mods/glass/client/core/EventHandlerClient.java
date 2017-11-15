@@ -6,6 +6,7 @@ import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassTerminal;
 import me.ichun.mods.ichunutil.client.model.item.ModelEmpty;
+import me.ichun.mods.ichunutil.common.module.worldportals.common.WorldPortals;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.item.Item;
@@ -140,6 +141,7 @@ public class EventHandlerClient
             {
                 terminalLocations.clear();
                 activeGLASS.clear();
+                terminalPlacements.forEach((k, v) -> WorldPortals.eventHandlerClient.renderGlobalProxy.releaseViewFrustum(v.getPair()));
                 terminalPlacements.clear();
                 terminalPlacementCreationTimeout.clear();
             }
@@ -221,6 +223,10 @@ public class EventHandlerClient
             if(bases.isEmpty())
             {
                 activeGLASS.remove(channel);
+                if(terminalPlacements.containsKey(channel))
+                {
+                    WorldPortals.eventHandlerClient.renderGlobalProxy.releaseViewFrustum(terminalPlacements.get(channel).getPair());
+                }
                 terminalPlacements.remove(channel);
                 terminalPlacementCreationTimeout.remove(channel);
             }
@@ -236,6 +242,7 @@ public class EventHandlerClient
     {
         terminalLocations.clear();
         activeGLASS.clear();
+        terminalPlacements.forEach((k, v) -> WorldPortals.eventHandlerClient.renderGlobalProxy.releaseViewFrustum(v.getPair()));
         terminalPlacements.clear();
         terminalPlacementCreationTimeout.clear();
     }

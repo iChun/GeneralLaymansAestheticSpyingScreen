@@ -124,7 +124,7 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
 
     public void drawScene(TileEntityGlassBase te, float partialTick)
     {
-        if(!GeneralLaymansAestheticSpyingScreen.eventHandlerClient.drawnChannels.contains(te.channel))
+        if(WorldPortalRenderer.renderLevel == 0 && !GeneralLaymansAestheticSpyingScreen.eventHandlerClient.drawnChannels.contains(te.channel))
         {
             //Draw scene
             GeneralLaymansAestheticSpyingScreen.eventHandlerClient.drawnChannels.add(te.channel);

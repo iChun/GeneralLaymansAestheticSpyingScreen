@@ -1,14 +1,17 @@
 package me.ichun.mods.glass.common.block;
 
 import me.ichun.mods.glass.client.render.TileEntityGlassRenderer;
+import me.ichun.mods.glass.client.sound.SoundGlassAmbience;
 import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassTerminal;
 import me.ichun.mods.ichunutil.common.module.worldportals.common.portal.WorldPortal;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.SoundCategory;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
@@ -21,6 +24,8 @@ public class TerminalPlacement extends WorldPortal
     public HashSet<TileEntityGlassBase> activeBlocks;
 
     public TileEntityGlassBase renderCaller;
+
+    public boolean playedAmbience;
 
     public TerminalPlacement(World world)
     {
@@ -67,6 +72,12 @@ public class TerminalPlacement extends WorldPortal
     @Override
     public void drawPlane(float partialTick)
     {
+        if(!playedAmbience)
+        {
+            playedAmbience = true;
+            Minecraft.getMinecraft().getSoundHandler().playSound(new SoundGlassAmbience(GeneralLaymansAestheticSpyingScreen.soundAmb, SoundCategory.BLOCKS, 0.015F, 0.6F, this));
+        }
+
         for(TileEntityGlassBase base : activeBlocks)
         {
             if(base.active && base.lastDraw > 0)
