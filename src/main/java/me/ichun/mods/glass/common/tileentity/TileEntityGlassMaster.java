@@ -11,7 +11,7 @@ import java.util.ArrayList;
 public class TileEntityGlassMaster extends TileEntityGlassBase
 {
     public boolean powered;
-    public String setChannel = "public:Channel 1";
+    public String setChannel = "";
     public EnumFacing placingFace = EnumFacing.NORTH;
     public ArrayList<BlockPos> wirelessPos = new ArrayList<>();
 

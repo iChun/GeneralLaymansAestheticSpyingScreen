@@ -57,15 +57,15 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     @Override
     public boolean onBlockActivated(World worldIn, BlockPos pos, IBlockState state, EntityPlayer playerIn, EnumHand hand, EnumFacing facing, float hitX, float hitY, float hitZ)
     {
-        if(worldIn.isRemote)
-        {
             TileEntity te = worldIn.getTileEntity(pos);
             if(te instanceof TileEntityGlassMaster && !((TileEntityGlassMaster)te).active)
             {
-                openGui(((TileEntityGlassMaster)te));
+                if(worldIn.isRemote)
+                {
+                    openGui(((TileEntityGlassMaster)te));
+                }
                 return true;
             }
-        }
         return false;
     }
 

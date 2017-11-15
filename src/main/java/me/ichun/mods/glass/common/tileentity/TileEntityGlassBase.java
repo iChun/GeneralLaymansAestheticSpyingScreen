@@ -8,8 +8,11 @@ import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ITickable;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -339,5 +342,12 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
         onChunkUnload();
         readFromNBT(tag);
         onLoad();
+    }
+
+    @SideOnly(Side.CLIENT)
+    @Override
+    public AxisAlignedBB getRenderBoundingBox()
+    {
+        return new AxisAlignedBB(getPos().add(-1, -1, -1), getPos().add(2, 2, 2));
     }
 }

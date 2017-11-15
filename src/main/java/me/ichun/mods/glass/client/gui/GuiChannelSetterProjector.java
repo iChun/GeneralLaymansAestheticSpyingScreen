@@ -51,7 +51,14 @@ public class GuiChannelSetterProjector extends GuiScreen
         buttonList.clear();
         buttonList.add(new GuiButton(ID_CONFIRM, guiLeft + (xSize - 50) / 2, guiTop + ySize + 2, 50, 20, I18n.translateToLocal("gui.done")));
 
-        channels = new ArrayList<>(GeneralLaymansAestheticSpyingScreen.eventHandlerClient.terminalLocations.keySet());
+        channels = new ArrayList<>();
+        for(String s : GeneralLaymansAestheticSpyingScreen.eventHandlerClient.terminalLocations.keySet())
+        {
+            if(s.startsWith("public:") || s.startsWith(Minecraft.getMinecraft().player.getName() + ":"))
+            {
+                channels.add(s);
+            }
+        }
         Collections.sort(channels);
         for(int i = 0; i < channels.size(); i++)
         {

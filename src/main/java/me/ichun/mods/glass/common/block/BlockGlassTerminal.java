@@ -8,8 +8,10 @@ import net.minecraft.block.SoundType;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.creativetab.CreativeTabs;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
@@ -57,6 +59,21 @@ public class BlockGlassTerminal extends BlockObsidian implements ITileEntityProv
             }
         }
         return true;
+    }
+
+    @Override
+    public void onBlockPlacedBy(World worldIn, BlockPos pos, IBlockState state, EntityLivingBase placer, ItemStack stack)
+    {
+        if(!worldIn.isRemote)
+        {
+            TileEntity te = worldIn.getTileEntity(pos);
+            if(te instanceof TileEntityGlassTerminal)
+            {
+                TileEntityGlassTerminal terminal = (TileEntityGlassTerminal)te;
+                terminal.facing = EnumFacing.getDirectionFromEntityLiving(pos, placer);
+                terminal.markDirty();
+            }
+        }
     }
 
     @Override

@@ -1,6 +1,7 @@
 package me.ichun.mods.glass.client.core;
 
 import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
+import me.ichun.mods.glass.common.block.TerminalPlacement;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassTerminal;
@@ -29,6 +30,8 @@ public class EventHandlerClient
     public HashMap<String, BlockPos> terminalLocations = new HashMap<>();
     public HashMap<String, HashSet<TileEntityGlassBase>> activeGLASS = new HashMap<>();
     public HashSet<String> drawnChannels = new HashSet<>();
+    public HashMap<String, TerminalPlacement> terminalPlacements = new HashMap<>();
+    public HashMap<String, Integer> terminalPlacementCreationTimeout = new HashMap<>();
 
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event)
@@ -65,6 +68,16 @@ public class EventHandlerClient
                     else
                     {
                         clickedPos = BlockPos.ORIGIN;
+                    }
+                }
+                Iterator<Map.Entry<String, Integer>> ite = terminalPlacementCreationTimeout.entrySet().iterator();
+                while(ite.hasNext())
+                {
+                    Map.Entry<String, Integer> e = ite.next();
+                    e.setValue(e.getValue() - 1);
+                    if(e.getValue() < 0)
+                    {
+                        ite.remove();
                     }
                 }
             }
@@ -127,8 +140,56 @@ public class EventHandlerClient
             {
                 terminalLocations.clear();
                 activeGLASS.clear();
+                terminalPlacements.clear();
+                terminalPlacementCreationTimeout.clear();
             }
         }
+    }
+
+    public TerminalPlacement getTerminalPlacement(String channel) //this is called in render, only from active bases.
+    {
+        if(!terminalPlacementCreationTimeout.containsKey(channel))
+        {
+            if(terminalPlacements.containsKey(channel))
+            {
+                return terminalPlacements.get(channel);
+            }
+            if(terminalLocations.containsKey(channel))
+            {
+                Minecraft mc = Minecraft.getMinecraft();
+                TileEntity te = mc.world.getTileEntity(terminalLocations.get(channel));
+                if(te instanceof TileEntityGlassTerminal)
+                {
+                    TileEntityGlassTerminal terminal = (TileEntityGlassTerminal)te;
+
+                    //we have the terminal. now find the projector
+                    TileEntityGlassMaster master = null;
+                    HashSet<TileEntityGlassBase> activeGlasses = activeGLASS.get(channel);
+                    for(TileEntityGlassBase base : activeGlasses)
+                    {
+                        if(base.active && base.distance == 1 && base.channel.equalsIgnoreCase(channel) && base instanceof TileEntityGlassMaster)
+                        {
+                            master = (TileEntityGlassMaster)base;
+                            break;
+                        }
+                    }
+
+                    if(master != null) //we have the projector. Now generate the terminal placement
+                    {
+                        TerminalPlacement placement = new TerminalPlacement(mc.world, master, terminal, getActiveGlass(channel));
+                        terminalPlacements.put(channel, placement);
+                        return placement;
+                    }
+                }
+                else
+                {
+                    terminalLocations.remove(channel);
+                }
+            }
+
+            terminalPlacementCreationTimeout.put(channel, 13); //13 tick wait before trying again.
+        }
+        return null;
     }
 
     public HashSet<TileEntityGlassBase> getActiveGlass(String channel)
@@ -144,6 +205,11 @@ public class EventHandlerClient
     {
         HashSet<TileEntityGlassBase> bases = activeGLASS.computeIfAbsent(channel, v -> new HashSet<>());
         bases.add(base);
+
+        if(terminalPlacements.containsKey(channel))
+        {
+            terminalPlacements.get(channel).addActiveGlass(base);
+        }
     }
 
     public void removeActiveGlass(TileEntityGlassBase base, String channel)
@@ -155,6 +221,12 @@ public class EventHandlerClient
             if(bases.isEmpty())
             {
                 activeGLASS.remove(channel);
+                terminalPlacements.remove(channel);
+                terminalPlacementCreationTimeout.remove(channel);
+            }
+            else if(terminalPlacements.containsKey(channel))
+            {
+                terminalPlacements.get(channel).removeActiveGlass(base);
             }
         }
     }
@@ -164,5 +236,7 @@ public class EventHandlerClient
     {
         terminalLocations.clear();
         activeGLASS.clear();
+        terminalPlacements.clear();
+        terminalPlacementCreationTimeout.clear();
     }
 }

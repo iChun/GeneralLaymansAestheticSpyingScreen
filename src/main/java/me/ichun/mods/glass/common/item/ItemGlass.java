@@ -40,7 +40,7 @@ public class ItemGlass extends ItemBlock
         TileEntity te = world.getTileEntity(pos);
         if(te instanceof TileEntityGlassMaster)
         {
-            ((TileEntityGlassMaster)te).placingFace = side;
+            ((TileEntityGlassMaster)te).placingFace = EnumFacing.getDirectionFromEntityLiving(pos, player);
         }
 
         return flag;

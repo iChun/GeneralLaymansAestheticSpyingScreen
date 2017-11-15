@@ -1,16 +1,20 @@
 package me.ichun.mods.glass.client.render;
 
 import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
+import me.ichun.mods.glass.common.block.TerminalPlacement;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassWireless;
 import me.ichun.mods.ichunutil.common.core.util.EntityHelper;
+import me.ichun.mods.ichunutil.common.module.worldportals.client.render.WorldPortalRenderer;
+import me.ichun.mods.ichunutil.common.module.worldportals.common.portal.EntityTransformationStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.ModelEnderCrystal;
 import net.minecraft.client.renderer.*;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.entity.Entity;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
@@ -54,6 +58,19 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
         {
             GlStateManager.pushMatrix();
             float scale = 0.5F;
+
+            EnumFacing face = ((TileEntityGlassMaster)te).placingFace;
+            if(face == EnumFacing.DOWN)
+            {
+                GlStateManager.rotate(180F, 1F, 0F, 0F);
+            }
+            else if(face.getHorizontalIndex() >= 0)
+            {
+                int horiOrient = face.getHorizontalIndex();
+                GlStateManager.rotate(-horiOrient * 90F, 0F, 1F, 0F);
+                GlStateManager.rotate(90F, 1F, 0F, 0F);
+            }
+
             GlStateManager.rotate(EntityHelper.interpolateRotation(((TileEntityGlassMaster)te).rotationBeacon, ((TileEntityGlassMaster)te).rotationBeaconPrev, partialTick), 0F, 1F, 0F);
             GlStateManager.translate(-0.25D, -0.35D, -0.25D);
             GlStateManager.scale(scale, scale, scale);
@@ -85,7 +102,7 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
         float alpha = (float)Math.pow(MathHelper.clamp((te.fadeoutTime - partialTick) / (float)TileEntityGlassBase.FADEOUT_TIME, 0F, 1F), 0.5D);
         if(te.active)
         {
-            drawScene(te);
+            drawScene(te, partialTick);
         }
 
         if(alpha > 0D)
@@ -105,34 +122,69 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
         GlStateManager.popMatrix();
     }
 
-    public void drawScene(TileEntityGlassBase te)
+    public void drawScene(TileEntityGlassBase te, float partialTick)
     {
         if(!GeneralLaymansAestheticSpyingScreen.eventHandlerClient.drawnChannels.contains(te.channel))
         {
             //Draw scene
             GeneralLaymansAestheticSpyingScreen.eventHandlerClient.drawnChannels.add(te.channel);
 
-            //Apply the stencil
+            TerminalPlacement placement = GeneralLaymansAestheticSpyingScreen.eventHandlerClient.getTerminalPlacement(te.channel);
 
-            HashSet<TileEntityGlassBase> bases = GeneralLaymansAestheticSpyingScreen.eventHandlerClient.getActiveGlass(te.channel);
-            for(TileEntityGlassBase base : bases)
+            if(placement != null)
             {
-                if(base.active && base.lastDraw > 0)
+                placement.renderCaller = te;
+
+                Minecraft mc = Minecraft.getMinecraft();
+                Entity entity = mc.getRenderViewEntity();
+                double centerX = placement.master.getPos().getX() + 0.5D;
+                double centerY = placement.master.getPos().getY() + 0.5D;
+                double centerZ = placement.master.getPos().getZ() + 0.5D;
+
+                double destX = placement.terminal.getPos().getX() + 0.5D;
+                double destY = placement.terminal.getPos().getY() + 0.5D;
+                double destZ = placement.terminal.getPos().getZ() + 0.5D;
+
+                float[] appliedOffset = placement.getQuaternionFormula().applyPositionalRotation(new float[] { EntityHelper.interpolateValues((float)entity.prevPosX, (float)entity.posX, partialTick) - (float)centerX, EntityHelper.interpolateValues((float)entity.prevPosY, (float)entity.posY, partialTick) + entity.getEyeHeight() - (float)centerY, EntityHelper.interpolateValues((float)entity.prevPosZ, (float)entity.posZ, partialTick) - (float)centerZ });
+                float[] appliedRotation = placement.getQuaternionFormula().applyRotationalRotation(new float[] { EntityHelper.interpolateValues(entity.prevRotationYaw, entity.rotationYaw, partialTick), EntityHelper.interpolateValues(entity.prevRotationPitch, entity.rotationPitch, partialTick), WorldPortalRenderer.getRollFactor(WorldPortalRenderer.renderLevel, partialTick) });
+
+                EntityTransformationStack ets = new EntityTransformationStack(entity).moveEntity(destX, destY, destZ, new float[] { 0F, 0F, 0F }, appliedRotation, partialTick);
+                mc.entityRenderer.updateFogColor(partialTick);
+                ets.reset();
+                //End Transform the player position for fog.
+
+                GlStateManager.enableCull();
+                for(TileEntityGlassBase base : placement.activeBlocks)
                 {
-                    GlStateManager.pushMatrix();
-                    GlStateManager.translate(base.getPos().getX() - te.getPos().getX(), base.getPos().getY() - te.getPos().getY(), base.getPos().getZ() - te.getPos().getZ());
+                    if(base.active && base.lastDraw > 0)
+                    {
+                        GlStateManager.pushMatrix();
+                        GlStateManager.translate(base.getPos().getX() - te.getPos().getX(), base.getPos().getY() - te.getPos().getY(), base.getPos().getZ() - te.getPos().getZ());
 
-                    drawPlanes(base, 1F, 1F, 1F, 1F, 0.501D);
+                        TileEntityGlassRenderer.drawPlanes(base, mc.entityRenderer.fogColorRed, mc.entityRenderer.fogColorGreen, mc.entityRenderer.fogColorBlue, 1F, 0.501D);
 
-                    GlStateManager.popMatrix();
+                        GlStateManager.popMatrix();
+                    }
                 }
-            }
 
+                //Draw the new scene
+                WorldPortalRenderer.renderWorldPortal(mc, placement, entity, appliedOffset, appliedRotation, partialTick);// EXPLOSIONS
+
+                //Reset the states
+                GlStateManager.disableTexture2D();
+                GlStateManager.color(1F, 1F, 1F, 1F);
+                GlStateManager.disableLighting();
+                GlStateManager.disableNormalize();
+                GlStateManager.enableBlend();
+                GlStateManager.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+                GlStateManager.alphaFunc(GL11.GL_GREATER, 0.00625F);
+                GlStateManager.enableCull();
+                OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240F, 240F);
+            }
         }
     }
 
-
-    public void drawPlanes(TileEntityGlassBase te, float r, float g, float b, float alpha, double pushback)
+    public static void drawPlanes(TileEntityGlassBase te, float r, float g, float b, float alpha, double pushback)
     {
         Tessellator tessellator = Tessellator.getInstance();
         BufferBuilder bufferbuilder = tessellator.getBuffer();
