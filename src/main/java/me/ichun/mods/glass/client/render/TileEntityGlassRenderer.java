@@ -4,7 +4,6 @@ import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassWireless;
-import me.ichun.mods.ichunutil.client.render.RendererHelper;
 import me.ichun.mods.ichunutil.common.core.util.EntityHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.ModelEnderCrystal;
@@ -12,14 +11,14 @@ import net.minecraft.client.renderer.*;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-import net.minecraft.client.renderer.vertex.VertexBuffer;
 import net.minecraft.init.Blocks;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import org.lwjgl.opengl.GL11;
+
+import java.util.HashSet;
 
 public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntityGlassBase>
 {
@@ -49,7 +48,9 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
         GlStateManager.enableCull();
         OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240F, 240F);
 
-        if(te instanceof TileEntityGlassMaster)
+        boolean isMaster = te instanceof TileEntityGlassMaster;
+
+        if(isMaster)
         {
             GlStateManager.pushMatrix();
             float scale = 0.5F;
@@ -77,18 +78,19 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
             modelEnderCrystal.render(null, 0F, (((TileEntityGlassWireless)te).ticks + partialTick) * 1.2F, 0F, 0F, 0F, 0.0625F);
             GlStateManager.popMatrix();
         }
+        te.lastDraw = 8;
 
         GlStateManager.disableTexture2D();
 
-        float alpha = MathHelper.clamp((te.fadeoutTime - partialTick) / (float)TileEntityGlassBase.FADEOUT_TIME, 0F, 1F);
+        float alpha = (float)Math.pow(MathHelper.clamp((te.fadeoutTime - partialTick) / (float)TileEntityGlassBase.FADEOUT_TIME, 0F, 1F), 0.5D);
         if(te.active)
         {
-            alpha = 1F - alpha; //DEBUGGING
+            drawScene(te);
         }
 
         if(alpha > 0D)
         {
-            drawPlanes(te, alpha);
+            drawPlanes(te, 1F, 1F, 1F, alpha, 0.502D);
         }
 
         GlStateManager.enableTexture2D();
@@ -103,9 +105,35 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
         GlStateManager.popMatrix();
     }
 
-    public void drawPlanes(TileEntityGlassBase te, float alpha)
+    public void drawScene(TileEntityGlassBase te)
     {
-        double pushback = 0.501D;
+        if(!GeneralLaymansAestheticSpyingScreen.eventHandlerClient.drawnChannels.contains(te.channel))
+        {
+            //Draw scene
+            GeneralLaymansAestheticSpyingScreen.eventHandlerClient.drawnChannels.add(te.channel);
+
+            //Apply the stencil
+
+            HashSet<TileEntityGlassBase> bases = GeneralLaymansAestheticSpyingScreen.eventHandlerClient.getActiveGlass(te.channel);
+            for(TileEntityGlassBase base : bases)
+            {
+                if(base.active && base.lastDraw > 0)
+                {
+                    GlStateManager.pushMatrix();
+                    GlStateManager.translate(base.getPos().getX() - te.getPos().getX(), base.getPos().getY() - te.getPos().getY(), base.getPos().getZ() - te.getPos().getZ());
+
+                    drawPlanes(base, 1F, 1F, 1F, 1F, 0.501D);
+
+                    GlStateManager.popMatrix();
+                }
+            }
+
+        }
+    }
+
+
+    public void drawPlanes(TileEntityGlassBase te, float r, float g, float b, float alpha, double pushback)
+    {
         Tessellator tessellator = Tessellator.getInstance();
         BufferBuilder bufferbuilder = tessellator.getBuffer();
 
@@ -115,11 +143,6 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
             {
                 continue;
             }
-//            TileEntity te1 = te.getWorld().getTileEntity(te.getPos().offset(face));
-//            if(te1 instanceof TileEntityGlassBase)
-//            {
-//                continue;
-//            }
             GlStateManager.pushMatrix();
             int horiOrient = (face.getAxis() == EnumFacing.Axis.Y ? EnumFacing.UP : face).getOpposite().getHorizontalIndex();
             GlStateManager.rotate((face.getIndex() > 0 ? 180F : 0F) + -horiOrient * 90F, 0F, 1F, 0F);
@@ -131,10 +154,10 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
 
             float halfSize = 0.5001F;
             bufferbuilder.begin(7, DefaultVertexFormats.POSITION_COLOR);
-            bufferbuilder.pos(-halfSize,  halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
-            bufferbuilder.pos(-halfSize, -halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
-            bufferbuilder.pos( halfSize, -halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
-            bufferbuilder.pos( halfSize,  halfSize, 0F).color(1F, 1F, 1F, alpha).endVertex();
+            bufferbuilder.pos(-halfSize,  halfSize, 0F).color(r, g, b, alpha).endVertex();
+            bufferbuilder.pos(-halfSize, -halfSize, 0F).color(r, g, b, alpha).endVertex();
+            bufferbuilder.pos( halfSize, -halfSize, 0F).color(r, g, b, alpha).endVertex();
+            bufferbuilder.pos( halfSize,  halfSize, 0F).color(r, g, b, alpha).endVertex();
             tessellator.draw();
 
             GlStateManager.popMatrix();

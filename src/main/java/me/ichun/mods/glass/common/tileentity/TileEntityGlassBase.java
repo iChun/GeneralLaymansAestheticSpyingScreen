@@ -1,5 +1,6 @@
 package me.ichun.mods.glass.common.tileentity;
 
+import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
@@ -8,6 +9,7 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ITickable;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -45,6 +47,37 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
     public int fadePropagate;
     public int fadeDistance;
 
+    public int lastDraw;
+
+    @Override
+    public void onLoad()
+    {
+        if(getWorld().isRemote && active && !channel.isEmpty())
+        {
+            GeneralLaymansAestheticSpyingScreen.eventHandlerClient.addActiveGlass(this, channel);
+        }
+    }
+
+    @Override
+    public void onChunkUnload()
+    {
+        if(getWorld().isRemote && active && !channel.isEmpty())
+        {
+            GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(this, channel);
+        }
+    }
+
+    @Override
+    public boolean shouldRefresh(World world, BlockPos pos, IBlockState oldState, IBlockState newState)
+    {
+        boolean flag = oldState != newState;
+        if(flag && world.isRemote && active && !channel.isEmpty()) // new TE or removed
+        {
+            GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(this, channel);
+        }
+        return flag;
+    }
+
     @Override
     public void update()
     {
@@ -78,6 +111,10 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
             {
                 fadePropagate();
             }
+        }
+        if(lastDraw > 0)
+        {
+            lastDraw--;
         }
     }
 
@@ -150,6 +187,7 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
         if(activate && !active && (distance > base.distance || distance == 0)) //turn on
         {
             active = true;
+            GeneralLaymansAestheticSpyingScreen.eventHandlerClient.addActiveGlass(this, channel);
             channel = newChannel;
             distance = base.distance + 1;
             checkFacesToTurnOn(base);
@@ -160,6 +198,7 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
             if(distance > base.distance || base == this)
             {
                 active = false;
+                GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(this, channel);
                 flag = true;
             }
             else
@@ -289,6 +328,16 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
     @Override
     public void onDataPacket(NetworkManager net, SPacketUpdateTileEntity pkt)
     {
+        onChunkUnload();
         readFromNBT(pkt.getNbtCompound());
+        onLoad();
+    }
+
+    @Override
+    public void handleUpdateTag(NBTTagCompound tag)
+    {
+        onChunkUnload();
+        readFromNBT(tag);
+        onLoad();
     }
 }

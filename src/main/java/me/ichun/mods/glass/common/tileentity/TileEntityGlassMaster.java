@@ -1,5 +1,6 @@
 package me.ichun.mods.glass.common.tileentity;
 
+import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
@@ -32,6 +33,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
             if(newState)
             {
                 active = true;
+                GeneralLaymansAestheticSpyingScreen.eventHandlerClient.addActiveGlass(this, channel);
                 channel = setChannel;
                 distance = 1;
                 activeFaces.add(placingFace);
@@ -39,6 +41,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
             else
             {
                 active = false;
+                GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(this, channel);
             }
             fadeoutTime = TileEntityGlassBase.FADEOUT_TIME;
             propagateTime = TileEntityGlassBase.PROPAGATE_TIME;

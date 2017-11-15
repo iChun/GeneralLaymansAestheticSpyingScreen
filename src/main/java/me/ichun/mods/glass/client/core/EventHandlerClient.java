@@ -2,6 +2,7 @@ package me.ichun.mods.glass.client.core;
 
 import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
+import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassTerminal;
 import me.ichun.mods.ichunutil.client.model.item.ModelEmpty;
 import net.minecraft.client.Minecraft;
@@ -18,6 +19,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -25,6 +27,17 @@ public class EventHandlerClient
 {
     public BlockPos clickedPos = BlockPos.ORIGIN;
     public HashMap<String, BlockPos> terminalLocations = new HashMap<>();
+    public HashMap<String, HashSet<TileEntityGlassBase>> activeGLASS = new HashMap<>();
+    public HashSet<String> drawnChannels = new HashSet<>();
+
+    @SubscribeEvent
+    public void onRenderTick(TickEvent.RenderTickEvent event)
+    {
+        if(event.phase == TickEvent.Phase.START)
+        {
+            drawnChannels.clear();
+        }
+    }
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event)
@@ -98,10 +111,50 @@ public class EventHandlerClient
                         ite.remove();
                     }
                 }
+
+                Iterator<Map.Entry<String, HashSet<TileEntityGlassBase>>> ite1 = activeGLASS.entrySet().iterator();
+                while(ite1.hasNext())
+                {
+                    Map.Entry<String, HashSet<TileEntityGlassBase>> e = ite1.next();
+                    e.getValue().removeIf(base -> base.getWorld() != mc.world || !base.active);
+                    if(e.getValue().isEmpty())
+                    {
+                        ite1.remove();
+                    }
+                }
             }
             else
             {
                 terminalLocations.clear();
+                activeGLASS.clear();
+            }
+        }
+    }
+
+    public HashSet<TileEntityGlassBase> getActiveGlass(String channel)
+    {
+        if(!channel.isEmpty() && activeGLASS.containsKey(channel))
+        {
+            return activeGLASS.get(channel);
+        }
+        return new HashSet<>();
+    }
+
+    public void addActiveGlass(TileEntityGlassBase base, String channel)
+    {
+        HashSet<TileEntityGlassBase> bases = activeGLASS.computeIfAbsent(channel, v -> new HashSet<>());
+        bases.add(base);
+    }
+
+    public void removeActiveGlass(TileEntityGlassBase base, String channel)
+    {
+        HashSet<TileEntityGlassBase> bases = activeGLASS.get(channel);
+        if(bases != null)
+        {
+            bases.remove(base);
+            if(bases.isEmpty())
+            {
+                activeGLASS.remove(channel);
             }
         }
     }
@@ -110,5 +163,6 @@ public class EventHandlerClient
     public void disconnectFromServer()
     {
         terminalLocations.clear();
+        activeGLASS.clear();
     }
 }
