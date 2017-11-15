@@ -108,7 +108,7 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     public void getSubBlocks(CreativeTabs itemIn, NonNullList<ItemStack> items)
     {
         items.add(new ItemStack(this, 1, 1));
-        items.add(new ItemStack(this, 1, 2));
+//        items.add(new ItemStack(this, 1, 2)); //wireless
         items.add(new ItemStack(this, 1, 0));
     }
 

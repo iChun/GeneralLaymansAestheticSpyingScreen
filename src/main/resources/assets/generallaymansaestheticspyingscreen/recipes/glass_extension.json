@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "WCW",
+    "WNW",
+    "WRW"
+  ],
+  "key": {
+    "W": {
+      "item": "minecraft:glass"
+    },
+    "C": {
+      "item": "minecraft:gold_ingot"
+    },
+    "N": {
+      "item": "minecraft:ender_pearl"
+    },
+    "R": {
+      "item": "minecraft:redstone"
+    }
+  },
+  "result": {
+    "item": "generallaymansaestheticspyingscreen:block_glass",
+    "data": 0
+  }
+}
+ 

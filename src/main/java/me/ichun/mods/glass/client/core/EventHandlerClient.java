@@ -89,7 +89,7 @@ public class EventHandlerClient
     public void onModelRegistry(ModelRegistryEvent event)
     {
         ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(GeneralLaymansAestheticSpyingScreen.blockGlass), 0, new ModelResourceLocation("generallaymansaestheticspyingscreen:block_glass", "inventory"));
-        ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(GeneralLaymansAestheticSpyingScreen.blockGlass), 1, new ModelResourceLocation("generallaymansaestheticspyingscreen:block_glass", "inventory"));
+        ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(GeneralLaymansAestheticSpyingScreen.blockGlass), 1, new ModelResourceLocation("generallaymansaestheticspyingscreen:block_glass_projector", "inventory"));
         ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(GeneralLaymansAestheticSpyingScreen.blockGlass), 2, new ModelResourceLocation("generallaymansaestheticspyingscreen:block_glass", "inventory"));
 
         ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(GeneralLaymansAestheticSpyingScreen.blockGlassTerminal), 0, new ModelResourceLocation("generallaymansaestheticspyingscreen:block_glass_terminal", "inventory"));
@@ -203,7 +203,13 @@ public class EventHandlerClient
         return new HashSet<>();
     }
 
+
     public void addActiveGlass(TileEntityGlassBase base, String channel)
+    {
+        Minecraft.getMinecraft().addScheduledTask(() -> addGlass(base, channel));
+    }
+
+    private void addGlass(TileEntityGlassBase base, String channel)
     {
         HashSet<TileEntityGlassBase> bases = activeGLASS.computeIfAbsent(channel, v -> new HashSet<>());
         bases.add(base);
@@ -215,6 +221,11 @@ public class EventHandlerClient
     }
 
     public void removeActiveGlass(TileEntityGlassBase base, String channel)
+    {
+        Minecraft.getMinecraft().addScheduledTask(() -> removeGlass(base, channel));
+    }
+
+    private void removeGlass(TileEntityGlassBase base, String channel)
     {
         HashSet<TileEntityGlassBase> bases = activeGLASS.get(channel);
         if(bases != null)

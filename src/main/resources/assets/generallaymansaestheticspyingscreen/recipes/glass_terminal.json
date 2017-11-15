@@ -1,0 +1,26 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "WCW",
+    "WNW",
+    "WRW"
+  ],
+  "key": {
+    "W": {
+      "item": "minecraft:obsidian"
+    },
+    "C": {
+      "item": "minecraft:glass"
+    },
+    "N": {
+      "item": "minecraft:ender_eye"
+    },
+    "R": {
+      "item": "minecraft:redstone"
+    }
+  },
+  "result": {
+    "item": "generallaymansaestheticspyingscreen:block_glass_terminal"
+  }
+}
+ 

@@ -12,9 +12,11 @@ import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.SoundCategory;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 
 public class TerminalPlacement extends WorldPortal
@@ -47,6 +49,7 @@ public class TerminalPlacement extends WorldPortal
         pair.setPosition(new Vec3d(terminal.getPos().offset(terminal.facing, -1)).addVector(0.5D, 0.5D, 0.5D));
         pair.setFace(terminal.facing.getOpposite(), EnumFacing.UP);
         setPair(pair);
+        pair.setPair(this);
 
         generateActiveFaces();
     }
@@ -94,17 +97,52 @@ public class TerminalPlacement extends WorldPortal
 
     public void generateActiveFaces()
     {
+        WorldPortal pair = getPair();
 
+        ArrayList<BlockPos> poses = pair.getPoses();
+        ArrayList<EnumFacing> faces = pair.getFacesOn();
+        for(TileEntityGlassBase base : activeBlocks)
+        {
+            if(base.active)
+            {
+                BlockPos differencePos = base.getPos().subtract(master.getPos());
+                BlockPos referencePos = terminal.getPos().add(differencePos);
+                for(EnumFacing activeFace : base.activeFaces)
+                {
+                    if(GeneralLaymansAestheticSpyingScreen.blockGlass.shouldSideBeRendered(base.getWorld().getBlockState(base.getPos()), base.getWorld(), base.getPos(), activeFace))
+                    {
+                        EnumFacing actualFace = activeFace.getOpposite();
+                        BlockPos appliedPos = referencePos.offset(actualFace).add(differencePos);
+
+                        boolean found = false;
+                        for(int i = 0; i < faces.size(); i++)
+                        {
+                            EnumFacing face = faces.get(i);
+                            BlockPos pos = poses.get(i);
+                            if(face.equals(actualFace) && (face.getAxis() == EnumFacing.Axis.X && pos.getX() == appliedPos.getX() || face.getAxis() == EnumFacing.Axis.Y && pos.getY() == appliedPos.getY() || face.getAxis() == EnumFacing.Axis.Z && pos.getZ() == appliedPos.getZ()))
+                            {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if(!found)
+                        {
+                            pair.addFace(actualFace, EnumFacing.UP, new Vec3d(appliedPos).addVector(0.5D, 0.5D, 0.5D));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     public void addActiveGlass(TileEntityGlassBase base)
     {
-
+        generateActiveFaces();
     }
 
     public void removeActiveGlass(TileEntityGlassBase base)
     {
-
+        generateActiveFaces();
     }
 
     @Override

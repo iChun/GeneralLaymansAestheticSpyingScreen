@@ -204,7 +204,7 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
             }
             GlStateManager.translate(0F, 0F, pushback);
 
-            float halfSize = 0.5001F;
+            float halfSize = 0.501F;
             bufferbuilder.begin(7, DefaultVertexFormats.POSITION_COLOR);
             bufferbuilder.pos(-halfSize,  halfSize, 0F).color(r, g, b, alpha).endVertex();
             bufferbuilder.pos(-halfSize, -halfSize, 0F).color(r, g, b, alpha).endVertex();

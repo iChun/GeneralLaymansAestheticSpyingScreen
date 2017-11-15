@@ -234,14 +234,14 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
                     EnumFacing facing = activeFaces.get(i);
                     BlockPos facePos = getPos().offset(facing, -1);
                     TileEntity te = getWorld().getTileEntity(facePos);
-                    if(te instanceof TileEntityGlassBase && ((TileEntityGlassBase)te).distance < distance)
+                    if(te instanceof TileEntityGlassBase && ((TileEntityGlassBase)te).active && ((TileEntityGlassBase)te).channel.equalsIgnoreCase(channel) && ((TileEntityGlassBase)te).distance < distance)
                     {
                         activeFaces.remove(i);
                         continue;
                     }
                     facePos = getPos().offset(facing);
                     te = getWorld().getTileEntity(facePos);
-                    if(te instanceof TileEntityGlassBase && ((TileEntityGlassBase)te).distance < distance)
+                    if(te instanceof TileEntityGlassBase && ((TileEntityGlassBase)te).active && ((TileEntityGlassBase)te).channel.equalsIgnoreCase(channel) && ((TileEntityGlassBase)te).distance < distance)
                     {
                         activeFaces.remove(i);
                         continue;
@@ -254,24 +254,37 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
             {
                 BlockPos facePos = getPos().offset(facing);
                 TileEntity te = getWorld().getTileEntity(facePos);
-                if(te instanceof TileEntityGlassBase)
+                if(te instanceof TileEntityGlassBase) //inner corner
                 {
                     BlockPos originPos = origin.getPos().offset(facing);
                     EnumFacing newFace = EnumFacing.getFacingFromVector(originPos.getX() - facePos.getX(), originPos.getY() - facePos.getY(), originPos.getZ() - facePos.getZ());
-                        newFaces.add(newFace);
+                    newFaces.add(newFace);
                 }
-                else
+                else //outer corner
                 {
                     facePos = getPos().offset(facing, -1);
                     te = getWorld().getTileEntity(facePos);
                     if(te instanceof TileEntityGlassBase)
                     {
+                        if(origin.getPos().getY() != getPos().getY())
+                        {
+                            // maybe the origin is from below but we prefer horizontals
+                            for(EnumFacing newFacing : PROPAGATION_FACES.get(facing))
+                            {
+                                if(newFacing.getAxis() != EnumFacing.Axis.Y)
+                                {
+                                    BlockPos newPos = getPos().offset(newFacing);
+                                    TileEntity te1 = getWorld().getTileEntity(newPos);
+                                    if(te1 instanceof TileEntityGlassBase && ((TileEntityGlassBase)te1).activeFaces.contains(facing))
+                                    {
+                                        origin = ((TileEntityGlassBase)te1);
+                                    }
+                                }
+                            }
+                        }
                         BlockPos originPos = origin.getPos().offset(facing, -1);
                         EnumFacing newFace = EnumFacing.getFacingFromVector(facePos.getX() - originPos.getX(), facePos.getY() - originPos.getY(), facePos.getZ() - originPos.getZ());
-                        if(!newFaces.contains(newFace))
-                        {
-                            newFaces.add(newFace);
-                        }
+                        newFaces.add(newFace);
                     }
                 }
             }
