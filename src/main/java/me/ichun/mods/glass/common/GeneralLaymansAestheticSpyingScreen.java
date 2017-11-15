@@ -4,6 +4,7 @@ import me.ichun.mods.glass.client.core.EventHandlerClient;
 import me.ichun.mods.glass.common.core.EventHandlerServer;
 import me.ichun.mods.glass.common.core.ProxyCommon;
 import me.ichun.mods.ichunutil.common.core.Logger;
+import me.ichun.mods.ichunutil.common.core.network.PacketChannel;
 import me.ichun.mods.ichunutil.common.iChunUtil;
 import me.ichun.mods.ichunutil.common.module.update.UpdateChecker;
 import net.minecraft.block.Block;
@@ -32,10 +33,13 @@ public class GeneralLaymansAestheticSpyingScreen
 
     public static final Logger LOGGER = Logger.createLogger(MOD_NAME);
 
+    public static PacketChannel channel;
+
     public static EventHandlerClient eventHandlerClient;
     public static EventHandlerServer eventHandlerServer;
 
     public static Block blockGlass;
+    public static Block blockGlassTerminal;
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event)

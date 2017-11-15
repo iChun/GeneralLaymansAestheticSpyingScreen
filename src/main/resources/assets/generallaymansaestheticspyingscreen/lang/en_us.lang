@@ -1,3 +1,10 @@
 tile.glass.block.glass.base.name=GLASS extension
 tile.glass.block.glass.master.name=GLASS projector
 tile.glass.block.glass.wireless.name=GLASS wireless extension
+tile.glass.block.glass_terminal.name=GLASS terminal
+
+glass.gui.channelName=Channel Name
+glass.gui.publicChannel=Public Channel
+
+glass.gui.availableChannels=Available Channels
+glass.gui.public=(Public)

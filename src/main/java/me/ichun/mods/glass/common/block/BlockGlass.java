@@ -1,5 +1,6 @@
 package me.ichun.mods.glass.common.block;
 
+import me.ichun.mods.glass.client.gui.GuiChannelSetterProjector;
 import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
@@ -10,14 +11,19 @@ import net.minecraft.block.material.Material;
 import net.minecraft.block.properties.PropertyBool;
 import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.client.Minecraft;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumHand;
 import net.minecraft.util.NonNullList;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraftforge.fml.client.FMLClientHandler;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 
 import javax.annotation.Nullable;
 import java.util.HashSet;
@@ -46,6 +52,21 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     public int damageDropped(IBlockState state)
     {
         return getMetaFromState(state);
+    }
+
+    @Override
+    public boolean onBlockActivated(World worldIn, BlockPos pos, IBlockState state, EntityPlayer playerIn, EnumHand hand, EnumFacing facing, float hitX, float hitY, float hitZ)
+    {
+        if(worldIn.isRemote)
+        {
+            TileEntity te = worldIn.getTileEntity(pos);
+            if(te instanceof TileEntityGlassMaster && !((TileEntityGlassMaster)te).active)
+            {
+                openGui(((TileEntityGlassMaster)te));
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -211,5 +232,11 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     public int getMetaFromState(IBlockState state)
     {
         return state.getValue(WIRELESS) ? 2 : state.getValue(MASTER) ? 1 : 0;
+    }
+
+    @SideOnly(Side.CLIENT)
+    public void openGui(TileEntityGlassMaster master)
+    {
+        FMLClientHandler.instance().displayGuiScreen(Minecraft.getMinecraft().player, new GuiChannelSetterProjector(master));
     }
 }
