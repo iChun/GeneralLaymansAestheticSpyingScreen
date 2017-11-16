@@ -95,7 +95,7 @@ public class TerminalPlacement extends WorldPortal
         }
     }
 
-    public void generateActiveFaces()
+    public void generateActiveFaces() //TODO fix this
     {
         WorldPortal pair = getPair();
 

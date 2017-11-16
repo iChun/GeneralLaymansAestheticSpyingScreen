@@ -2,6 +2,7 @@ package me.ichun.mods.glass.common.core;
 
 import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import me.ichun.mods.glass.common.packet.PacketSetChannel;
+import me.ichun.mods.glass.common.packet.PacketSetProjector;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassTerminal;
@@ -25,6 +26,6 @@ public class ProxyCommon
         GeneralLaymansAestheticSpyingScreen.eventHandlerServer = new EventHandlerServer();
         MinecraftForge.EVENT_BUS.register(GeneralLaymansAestheticSpyingScreen.eventHandlerServer);
 
-        GeneralLaymansAestheticSpyingScreen.channel = new PacketChannel("GLASS", PacketSetChannel.class);
+        GeneralLaymansAestheticSpyingScreen.channel = new PacketChannel("GLASS", PacketSetChannel.class, PacketSetProjector.class);
     }
 }

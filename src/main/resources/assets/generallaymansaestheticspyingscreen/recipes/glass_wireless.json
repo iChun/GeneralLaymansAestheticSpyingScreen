@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+      {
+        "item": "generallaymansaestheticspyingscreen:block_glass",
+        "data": 0
+      },
+      {
+        "item": "minecraft:end_crystal"
+      }
+  ],
+  "result": {
+    "item": "generallaymansaestheticspyingscreen:block_glass",
+    "data": 2
+  }
+}
+ 

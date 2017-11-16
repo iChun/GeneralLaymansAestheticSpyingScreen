@@ -1,6 +1,7 @@
 package me.ichun.mods.glass.common.block;
 
 import me.ichun.mods.glass.client.gui.GuiChannelSetterProjector;
+import me.ichun.mods.glass.client.gui.GuiProjectorSetter;
 import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
@@ -57,15 +58,23 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     @Override
     public boolean onBlockActivated(World worldIn, BlockPos pos, IBlockState state, EntityPlayer playerIn, EnumHand hand, EnumFacing facing, float hitX, float hitY, float hitZ)
     {
-            TileEntity te = worldIn.getTileEntity(pos);
-            if(te instanceof TileEntityGlassMaster && !((TileEntityGlassMaster)te).active)
+        TileEntity te = worldIn.getTileEntity(pos);
+        if(te instanceof TileEntityGlassMaster && !((TileEntityGlassBase)te).active)
+        {
+            if(worldIn.isRemote)
             {
-                if(worldIn.isRemote)
-                {
-                    openGui(((TileEntityGlassMaster)te));
-                }
-                return true;
+                openGui(((TileEntityGlassMaster)te));
             }
+            return true;
+        }
+        if(te instanceof TileEntityGlassWireless && !((TileEntityGlassBase)te).active)
+        {
+            if(worldIn.isRemote)
+            {
+                openGui(((TileEntityGlassWireless)te));
+            }
+            return true;
+        }
         return false;
     }
 
@@ -108,7 +117,7 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     public void getSubBlocks(CreativeTabs itemIn, NonNullList<ItemStack> items)
     {
         items.add(new ItemStack(this, 1, 1));
-//        items.add(new ItemStack(this, 1, 2)); //wireless
+        items.add(new ItemStack(this, 1, 2)); //wireless
         items.add(new ItemStack(this, 1, 0));
     }
 
@@ -238,5 +247,11 @@ public class BlockGlass extends net.minecraft.block.BlockGlass implements ITileE
     public void openGui(TileEntityGlassMaster master)
     {
         FMLClientHandler.instance().displayGuiScreen(Minecraft.getMinecraft().player, new GuiChannelSetterProjector(master));
+    }
+
+    @SideOnly(Side.CLIENT)
+    public void openGui(TileEntityGlassWireless master)
+    {
+        FMLClientHandler.instance().displayGuiScreen(Minecraft.getMinecraft().player, new GuiProjectorSetter(master));
     }
 }
