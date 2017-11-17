@@ -149,9 +149,17 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
         }
     }
 
+    public boolean canPropagate()
+    {
+        return true;
+    }
+
     public void propagate() //do I need to send active state, channel, online/offline, block change/init propagation?
     {
-        //DO STUFF
+        if(!canPropagate())
+        {
+            return;
+        }
         HashSet<EnumFacing> propagationFaces = new HashSet<>();
         for(EnumFacing facing : activeFaces)
         {
@@ -190,7 +198,6 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
         if(activate && !active && (distance > base.distance || distance == 0)) //turn on
         {
             active = true;
-            GeneralLaymansAestheticSpyingScreen.eventHandlerClient.addActiveGlass(this, channel);
             channel = newChannel;
             distance = base.distance + 1;
             checkFacesToTurnOn(base);
@@ -201,7 +208,6 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
             if(distance > base.distance || base == this)
             {
                 active = false;
-                GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(this, channel);
                 flag = true;
             }
             else

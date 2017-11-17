@@ -13,6 +13,7 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.translation.I18n;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -39,6 +40,16 @@ public class GuiProjectorSetter extends GuiScreen
     public GuiProjectorSetter(TileEntityGlassWireless wireless)
     {
         this.wireless = wireless;
+    }
+
+    @Override
+    public void handleMouseInput() throws IOException
+    {
+        int mouseX = Mouse.getEventX() * this.width / this.mc.displayWidth;
+        int mouseY = this.height - Mouse.getEventY() * this.height / this.mc.displayHeight - 1;
+
+        super.handleMouseInput();
+        this.trackList.handleMouseInput(mouseX, mouseY);
     }
 
     @Override

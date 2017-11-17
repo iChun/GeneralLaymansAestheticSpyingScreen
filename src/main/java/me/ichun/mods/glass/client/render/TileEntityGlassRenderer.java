@@ -22,6 +22,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import org.lwjgl.opengl.GL11;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 
 public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntityGlassBase>
@@ -92,7 +93,7 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
             GlStateManager.translate(0F, -0.15F, 0F);
             GlStateManager.scale(scale, scale, scale);
             bindTexture(ENDER_CRYSTAL_TEXTURES);
-            modelEnderCrystal.render(null, 0F, (((TileEntityGlassWireless)te).ticks + partialTick) * 1.2F, 0F, 0F, 0F, 0.0625F);
+            modelEnderCrystal.render(null, 0F, (((TileEntityGlassWireless)te).ticks + partialTick) * (1.2F + ((TileEntityGlassWireless)te).users * 10F), 0F, 0F, 0F, 0.0625F);
             GlStateManager.popMatrix();
         }
         te.lastDraw = 8;
@@ -105,9 +106,10 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
             drawScene(te, partialTick);
         }
 
+//        drawPlanes(te, 1F, 1F, 0F, 1F, 0.502D);
         if(alpha > 0D)
         {
-            drawPlanes(te, 1F, 1F, 1F, alpha, 0.502D);
+            drawPlanes(te, 1F, 1F, 1F, alpha, isMaster && !((TileEntityGlassMaster)te).wirelessPos.isEmpty() ? 0.501D : 0.502D);
         }
 
         GlStateManager.enableTexture2D();
@@ -189,6 +191,38 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
         Tessellator tessellator = Tessellator.getInstance();
         BufferBuilder bufferbuilder = tessellator.getBuffer();
 
+        if(te instanceof TileEntityGlassMaster)
+        {
+            TileEntityGlassMaster master = (TileEntityGlassMaster)te;
+            if(!master.wirelessPos.isEmpty())
+            {
+                if(master.wirelessPos.size() == 1)
+                {
+                    return;
+                }
+                else //draw planes
+                {
+                    EnumFacing face = master.placingFace;
+
+                    GlStateManager.color(r, g, b, alpha);
+
+                    GlStateManager.glBegin(GL11.GL_TRIANGLE_STRIP);
+                    GlStateManager.glVertex3f((float)(face.getFrontOffsetX() * pushback), (float)(face.getFrontOffsetY() * pushback), (float)(face.getFrontOffsetZ() * pushback));
+                    for(BlockPos pos : master.wirelessPos)
+                    {
+                        float pX = (float)(face.getFrontOffsetX() * pushback * (face.getFrontOffsetX() > 0 && pos.getX() > master.getPos().getX() ? -1D : 1D));
+                        float pY = (float)(face.getFrontOffsetY() * pushback * (face.getFrontOffsetY() > 0 && pos.getY() > master.getPos().getY() ? -1D : 1D));
+                        float pZ = (float)(face.getFrontOffsetZ() * pushback * (face.getFrontOffsetZ() > 0 && pos.getZ() > master.getPos().getZ() ? -1D : 1D));
+                        GlStateManager.glVertex3f(pos.getX() - master.getPos().getX() + pX, pos.getY() - master.getPos().getY() + pY, pos.getZ() - master.getPos().getZ() + pZ);
+                    }
+                    GlStateManager.glEnd();
+
+                    GlStateManager.color(1F, 1F, 1F, 1F);
+                }
+                return;
+            }
+        }
+
         for(EnumFacing face : te.activeFaces)
         {
             if(!GeneralLaymansAestheticSpyingScreen.blockGlass.shouldSideBeRendered(te.getWorld().getBlockState(te.getPos()), te.getWorld(), te.getPos(), face))
@@ -215,4 +249,11 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
             GlStateManager.popMatrix();
         }
     }
+
+    @Override
+    public boolean isGlobalRenderer(TileEntityGlassBase te)
+    {
+        return true;
+    }
+
 }

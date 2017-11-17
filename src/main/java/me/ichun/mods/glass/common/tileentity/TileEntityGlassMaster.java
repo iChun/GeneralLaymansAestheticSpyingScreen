@@ -4,9 +4,11 @@ import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.Packet;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
@@ -22,13 +24,75 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
     public float rotationBeacon, rotationBeaconPrev;
 
     @Override
+    public void onLoad()
+    {
+        if(getWorld().isRemote && active && !channel.isEmpty())
+        {
+            GeneralLaymansAestheticSpyingScreen.eventHandlerClient.addActiveGlass(this, channel);
+
+            for(BlockPos pos : wirelessPos)
+            {
+                TileEntity te = getWorld().getTileEntity(pos);
+                if(te instanceof TileEntityGlassWireless)
+                {
+                    TileEntityGlassWireless wireless = (TileEntityGlassWireless)te;
+                    wireless.users++;
+                    GeneralLaymansAestheticSpyingScreen.eventHandlerClient.addActiveGlass(wireless, channel);
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onChunkUnload()
+    {
+        if(getWorld().isRemote && active && !channel.isEmpty())
+        {
+            GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(this, channel);
+
+            for(BlockPos pos : wirelessPos)
+            {
+                TileEntity te = getWorld().getTileEntity(pos);
+                if(te instanceof TileEntityGlassWireless)
+                {
+                    TileEntityGlassWireless wireless = (TileEntityGlassWireless)te;
+                    wireless.users--;
+                    GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(wireless, channel);
+                }
+            }
+        }
+    }
+
+    @Override
+    public boolean shouldRefresh(World world, BlockPos pos, IBlockState oldState, IBlockState newState)
+    {
+        boolean flag = oldState != newState;
+        if(flag && world.isRemote && active && !channel.isEmpty()) // new TE or removed
+        {
+            GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(this, channel);
+
+            for(BlockPos pos1 : wirelessPos)
+            {
+                TileEntity te = getWorld().getTileEntity(pos1);
+                if(te instanceof TileEntityGlassWireless)
+                {
+                    TileEntityGlassWireless wireless = (TileEntityGlassWireless)te;
+                    wireless.users--;
+                    GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(wireless, channel);
+                }
+            }
+        }
+        return flag;
+    }
+
+    @Override
     public void update()
     {
         super.update(); //Glass master is also a glass base. Let it do it's job.
         float rotationFactor = active && channel.equalsIgnoreCase(setChannel) ? (1.0F - (1.0F * (float)fadeoutTime / FADEOUT_TIME)) : (1.0F * (float)fadeoutTime / FADEOUT_TIME);
         rotationBeacon += 20F * rotationFactor;
         rotationBeaconPrev = rotationBeacon;
-        
+
         if(wirelessPos.removeIf(pos -> !(getWorld().getTileEntity(pos) instanceof TileEntityGlassWireless)))
         {
             IBlockState state = getWorld().getBlockState(getPos());
@@ -43,7 +107,6 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
             if(newState) //TODO deal with this as well with wirelessPos
             {
                 active = true;
-                GeneralLaymansAestheticSpyingScreen.eventHandlerClient.addActiveGlass(this, channel);
                 channel = setChannel;
                 distance = 1;
                 activeFaces.add(placingFace);
@@ -51,13 +114,18 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
             else
             {
                 active = false;
-                GeneralLaymansAestheticSpyingScreen.eventHandlerClient.removeActiveGlass(this, channel);
             }
             fadeoutTime = TileEntityGlassBase.FADEOUT_TIME;
             propagateTime = TileEntityGlassBase.PROPAGATE_TIME;
             IBlockState state = getWorld().getBlockState(getPos());
             getWorld().notifyBlockUpdate(getPos(), state, state, 3);
         }
+    }
+
+    @Override
+    public boolean canPropagate()
+    {
+        return wirelessPos.isEmpty();
     }
 
     @Override
@@ -85,6 +153,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
         powered = tag.getBoolean("powered");
         setChannel = tag.getString("setChannel");
         placingFace = EnumFacing.getFront(tag.getInteger("placingFace"));
+        wirelessPos.clear();
         int pos = tag.getInteger("wirelessPos");
         for(int i = 0; i < pos; i++)
         {

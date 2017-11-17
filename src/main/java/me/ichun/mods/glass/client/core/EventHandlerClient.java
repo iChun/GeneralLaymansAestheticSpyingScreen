@@ -98,7 +98,7 @@ public class EventHandlerClient
     @SubscribeEvent
     public void onModelBake(ModelBakeEvent event)
     {
-        event.getModelRegistry().putObject(new ModelResourceLocation("generallaymansaestheticspyingscreen:block_glass_terminal", "normal"), ModelEmpty.INSTANCE);
+        event.getModelRegistry().putObject(new ModelResourceLocation("generallaymansaestheticspyingscreen:block_glass_terminal", "normal"), new ModelEmpty(Minecraft.getMinecraft().getTextureMapBlocks().getAtlasSprite("minecraft:blocks/obsidian")));
     }
 
     @SubscribeEvent

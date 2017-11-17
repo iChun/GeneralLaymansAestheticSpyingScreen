@@ -11,3 +11,5 @@ glass.gui.public=(Public)
 
 glass.gui.availableProjectors=Available Projectors
 glass.gui.notSet=<Not Set>
+
+glass.gui.wirelessExtensionOrder=Wireless Extension Order

@@ -8,9 +8,12 @@ import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.translation.I18n;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -21,6 +24,7 @@ public class GuiChannelSetterProjector extends GuiScreen
     public static final ResourceLocation texBackground = new ResourceLocation("generallaymansaestheticspyingscreen", "textures/gui/channel_set.png");
 
     public static final int ID_CONFIRM = 0;
+    public static final int ID_WIRELESS_ORDER = 1;
 
     public int xSize = 93;
     public int ySize = 75;
@@ -50,6 +54,8 @@ public class GuiChannelSetterProjector extends GuiScreen
 
         buttonList.clear();
         buttonList.add(new GuiButton(ID_CONFIRM, guiLeft + (xSize - 50) / 2, guiTop + ySize + 2, 50, 20, I18n.translateToLocal("gui.done")));
+        buttonList.add(new GuiButton(ID_WIRELESS_ORDER, guiLeft + xSize + 1, guiTop , 20, 20, ""));
+
 
         channels = new ArrayList<>();
         for(String s : GeneralLaymansAestheticSpyingScreen.eventHandlerClient.terminalLocations.keySet())
@@ -98,6 +104,16 @@ public class GuiChannelSetterProjector extends GuiScreen
     }
 
     @Override
+    public void handleMouseInput() throws IOException
+    {
+        int mouseX = Mouse.getEventX() * this.width / this.mc.displayWidth;
+        int mouseY = this.height - Mouse.getEventY() * this.height / this.mc.displayHeight - 1;
+
+        super.handleMouseInput();
+        this.trackList.handleMouseInput(mouseX, mouseY);
+    }
+
+    @Override
     public void onGuiClosed()
     {
         Keyboard.enableRepeatEvents(false);
@@ -137,6 +153,15 @@ public class GuiChannelSetterProjector extends GuiScreen
         super.drawScreen(mouseX, mouseY, partialTicks);
 
         GlStateManager.pushMatrix();
+        GlStateManager.enableDepth();
+        RenderHelper.enableGUIStandardItemLighting();
+        GlStateManager.translate(guiLeft + xSize + 3, guiTop + 2, 0);
+        mc.getRenderItem().renderItemAndEffectIntoGUI(new ItemStack(GeneralLaymansAestheticSpyingScreen.blockGlass, 1, 2), 0, 0);
+        RenderHelper.disableStandardItemLighting();
+        GlStateManager.disableDepth();
+        GlStateManager.popMatrix();
+
+        GlStateManager.pushMatrix();
         GlStateManager.scale(0.5F, 0.5F, 0.5F);
         fontRenderer.drawString(I18n.translateToLocal("glass.gui.availableChannels"), (guiLeft + 5) / 0.5F, (guiTop + 5) / 0.5F, 16777215, true);
         GlStateManager.popMatrix();
@@ -161,6 +186,10 @@ public class GuiChannelSetterProjector extends GuiScreen
         if(btn.id == ID_CONFIRM)
         {
             confirmSelection(false);
+        }
+        else if(btn.id == ID_WIRELESS_ORDER)
+        {
+            mc.displayGuiScreen(new GuiWirelessOrder(master));
         }
     }
 }
