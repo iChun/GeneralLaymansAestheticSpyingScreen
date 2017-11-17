@@ -104,7 +104,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
     {
         if(!setChannel.isEmpty() && (!active || channel.equalsIgnoreCase(setChannel)))
         {
-            if(newState) //TODO deal with this as well with wirelessPos
+            if(newState)
             {
                 active = true;
                 channel = setChannel;

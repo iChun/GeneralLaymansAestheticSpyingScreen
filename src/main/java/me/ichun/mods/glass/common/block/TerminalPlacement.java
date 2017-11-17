@@ -6,6 +6,8 @@ import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassBase;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassMaster;
 import me.ichun.mods.glass.common.tileentity.TileEntityGlassTerminal;
+import me.ichun.mods.ichunutil.common.core.util.EntityHelper;
+import me.ichun.mods.ichunutil.common.module.worldportals.client.render.WorldPortalRenderer;
 import me.ichun.mods.ichunutil.common.module.worldportals.common.portal.WorldPortal;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
@@ -100,7 +102,7 @@ public class TerminalPlacement extends WorldPortal
         WorldPortal pair = getPair();
         for(TileEntityGlassBase base : activeBlocks)
         {
-            if(base instanceof TileEntityGlassMaster && !((TileEntityGlassMaster)base).wirelessPos.isEmpty())
+            if(base instanceof TileEntityGlassMaster && !((TileEntityGlassMaster)base).wirelessPos.isEmpty() || base.active && base.activeFaces.size() > 1 && (terminal.facing.getAxis() == EnumFacing.Axis.Y || base.activeFaces.contains(EnumFacing.UP) || base.activeFaces.contains(EnumFacing.DOWN)))
             {
                 EnumFacing face = pair.getFaceOn();
                 BlockPos pos = pair.getPos();
@@ -118,29 +120,34 @@ public class TerminalPlacement extends WorldPortal
             if(base.active)
             {
                 BlockPos differencePos = base.getPos().subtract(master.getPos());
-                BlockPos referencePos = terminal.getPos().add(differencePos);
+                float[] appliedOffset = pair.getQuaternionFormula().applyPositionalRotation(new float[] { differencePos.getX(), differencePos.getY(), differencePos.getZ() });
+                BlockPos appliedPos = terminal.getPos().add(-appliedOffset[0] + 0.01D, -appliedOffset[1] + 0.01D, -appliedOffset[2] + 0.01D);
                 for(EnumFacing activeFace : base.activeFaces)
                 {
-                    if(GeneralLaymansAestheticSpyingScreen.blockGlass.shouldSideBeRendered(base.getWorld().getBlockState(base.getPos()), base.getWorld(), base.getPos(), activeFace))
+                    float horiAngle = activeFace.getOpposite().getHorizontalAngle();
+                    float[] appliedRotation = pair.getQuaternionFormula().applyRotationalRotation(new float[] { horiAngle, 0F, 0F });
+                    float angle = horiAngle - appliedRotation[0];
+                    while(angle < 0)
                     {
-                        EnumFacing actualFace = activeFace.getOpposite();
-                        BlockPos appliedPos = referencePos.offset(actualFace).add(differencePos);
+                        angle += 360F;
+                    }
+                    EnumFacing appliedFace = EnumFacing.fromAngle(angle);
+                    BlockPos referencePos = appliedPos.offset(appliedFace);
 
-                        boolean found = false;
-                        for(int i = 0; i < faces.size(); i++)
+                    boolean found = false;
+                    for(int i = 0; i < faces.size(); i++)
+                    {
+                        EnumFacing face = faces.get(i);
+                        BlockPos pos = poses.get(i);
+                        if(face.equals(appliedFace) && (appliedFace.getAxis() == EnumFacing.Axis.X && pos.getX() == referencePos.getX() || appliedFace.getAxis() == EnumFacing.Axis.Z && pos.getZ() == referencePos.getZ()))
                         {
-                            EnumFacing face = faces.get(i);
-                            BlockPos pos = poses.get(i);
-                            if(face.equals(actualFace) && (face.getAxis() == EnumFacing.Axis.X && pos.getX() == appliedPos.getX() || face.getAxis() == EnumFacing.Axis.Y && pos.getY() == appliedPos.getY() || face.getAxis() == EnumFacing.Axis.Z && pos.getZ() == appliedPos.getZ()))
-                            {
-                                found = true;
-                                break;
-                            }
+                            found = true;
+                            break;
                         }
-                        if(!found)
-                        {
-                            pair.addFace(actualFace, EnumFacing.UP, new Vec3d(appliedPos).addVector(0.5D, 0.5D, 0.5D));
-                        }
+                    }
+                    if(!found)
+                    {
+                        pair.addFace(appliedFace, EnumFacing.UP, new Vec3d(referencePos).addVector(0.5D, 0.5D, 0.5D));
                     }
                 }
             }
