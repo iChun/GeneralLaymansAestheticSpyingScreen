@@ -125,7 +125,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
     @Override
     public boolean canPropagate()
     {
-        return wirelessPos.isEmpty();
+        return wirelessPos.isEmpty() && super.canPropagate();
     }
 
     @Override
@@ -165,7 +165,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
     @Override
     public AxisAlignedBB getRenderBoundingBox()
     {
-        if(!wirelessPos.isEmpty())
+        if(active && !wirelessPos.isEmpty())
         {
             int minX = getPos().getX();
             int minY = getPos().getY();

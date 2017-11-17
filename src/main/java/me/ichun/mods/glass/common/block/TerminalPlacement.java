@@ -98,6 +98,18 @@ public class TerminalPlacement extends WorldPortal
     public void generateActiveFaces() //TODO fix this
     {
         WorldPortal pair = getPair();
+        for(TileEntityGlassBase base : activeBlocks)
+        {
+            if(base instanceof TileEntityGlassMaster && !((TileEntityGlassMaster)base).wirelessPos.isEmpty())
+            {
+                EnumFacing face = pair.getFaceOn();
+                BlockPos pos = pair.getPos();
+                pair.setFace(face, EnumFacing.UP);
+                pair.setPosition(new Vec3d(pos).addVector(0.5D, 0.5D, 0.5D));
+                pair.addFace(face.getOpposite(), EnumFacing.UP, new Vec3d(pos).addVector(0.5D, 0.5D, 0.5D));
+                return;
+            }
+        }
 
         ArrayList<BlockPos> poses = pair.getPoses();
         ArrayList<EnumFacing> faces = pair.getFacesOn();

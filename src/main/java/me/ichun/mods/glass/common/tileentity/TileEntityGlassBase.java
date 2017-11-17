@@ -151,7 +151,7 @@ public class TileEntityGlassBase extends TileEntity implements ITickable
 
     public boolean canPropagate()
     {
-        return true;
+        return distance < 40;
     }
 
     public void propagate() //do I need to send active state, channel, online/offline, block change/init propagation?
