@@ -99,20 +99,27 @@ public class TerminalPlacement extends WorldPortal
 
     public void generateActiveFaces() //TODO fix this
     {
-        WorldPortal pair = getPair();
+        renderAll = false;
+        HashSet<EnumFacing> faces = new HashSet<>();
         for(TileEntityGlassBase base : activeBlocks)
         {
-            if(base instanceof TileEntityGlassMaster && !((TileEntityGlassMaster)base).wirelessPos.isEmpty() || base.active && base.activeFaces.size() > 1 && (terminal.facing.getAxis() == EnumFacing.Axis.Y || base.activeFaces.contains(EnumFacing.UP) || base.activeFaces.contains(EnumFacing.DOWN)))
+            if(base instanceof TileEntityGlassMaster && !((TileEntityGlassMaster)base).wirelessPos.isEmpty())
             {
-                EnumFacing face = pair.getFaceOn();
-                BlockPos pos = pair.getPos();
-                pair.setFace(face, EnumFacing.UP);
-                pair.setPosition(new Vec3d(pos).addVector(0.5D, 0.5D, 0.5D));
-                pair.addFace(face.getOpposite(), EnumFacing.UP, new Vec3d(pos).addVector(0.5D, 0.5D, 0.5D));
-                return;
+                renderAll = true;
+                break;
+            }
+            if(base.active)
+            {
+                faces.addAll(base.activeFaces);
+                if(faces.size() > 1)
+                {
+                    renderAll = true;
+                    break;
+                }
             }
         }
 
+/*
         ArrayList<BlockPos> poses = pair.getPoses();
         ArrayList<EnumFacing> faces = pair.getFacesOn();
         for(TileEntityGlassBase base : activeBlocks)
@@ -152,6 +159,7 @@ public class TerminalPlacement extends WorldPortal
                 }
             }
         }
+*/
     }
 
     public void addActiveGlass(TileEntityGlassBase base)
