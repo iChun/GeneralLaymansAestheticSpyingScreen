@@ -16,8 +16,8 @@ compileJava {
 
 // Requires iChunUtil to run. Just put iChunUtil-deobf.jar in the /libs/ folder or it won't compile.
 version = "1.12.2-7.0.0"
-group= "grinder"
-archivesBaseName = "AttachableGrinder"
+group= "glass"
+archivesBaseName = "GeneralLaymansAestheticSpyingScreen"
 
 minecraft {
     version = "1.12.2-14.23.0.2493"
