@@ -3,7 +3,6 @@ package me.ichun.mods.glass.common.tileentity;
 import me.ichun.mods.glass.common.GeneralLaymansAestheticSpyingScreen;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.network.Packet;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -22,6 +21,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
     public ArrayList<BlockPos> wirelessPos = new ArrayList<>();
 
     public float rotationBeacon, rotationBeaconPrev;
+    public int wirelessTime;
 
     @Override
     public void onLoad()
@@ -98,6 +98,15 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
             IBlockState state = getWorld().getBlockState(getPos());
             getWorld().notifyBlockUpdate(getPos(), state, state, 3);
         }
+
+        if(active && channel.equalsIgnoreCase(setChannel) && !wirelessPos.isEmpty())
+        {
+            wirelessTime++;
+        }
+        else
+        {
+            wirelessTime = 0;
+        }
     }
 
     public void changeRedstoneState(boolean newState)
@@ -165,7 +174,7 @@ public class TileEntityGlassMaster extends TileEntityGlassBase
     @Override
     public AxisAlignedBB getRenderBoundingBox()
     {
-        if(active && !wirelessPos.isEmpty())
+        if(active && channel.equalsIgnoreCase(setChannel) && !wirelessPos.isEmpty())
         {
             int minX = getPos().getX();
             int minY = getPos().getY();

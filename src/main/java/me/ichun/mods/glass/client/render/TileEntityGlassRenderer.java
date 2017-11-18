@@ -100,17 +100,13 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
 
         GlStateManager.disableTexture2D();
 
-        float alpha = (float)Math.pow(MathHelper.clamp((te.fadeoutTime - partialTick) / (float)TileEntityGlassBase.FADEOUT_TIME, 0F, 1F), 0.5D);
         if(te.active)
         {
             drawScene(te, partialTick);
         }
 
 //        drawPlanes(te, 1F, 1F, 0F, 1F, 0.502D);
-        if(alpha > 0D)
-        {
-            drawPlanes(te, 1F, 1F, 1F, alpha, isMaster && !((TileEntityGlassMaster)te).wirelessPos.isEmpty() ? 0.501D : 0.502D);
-        }
+        drawPlanes(te, 1F, 1F, 1F, -1F, isMaster && !((TileEntityGlassMaster)te).wirelessPos.isEmpty() ? 0.501D : 0.502D, partialTick);
 
         GlStateManager.enableTexture2D();
 
@@ -163,7 +159,7 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
                         GlStateManager.pushMatrix();
                         GlStateManager.translate(base.getPos().getX() - te.getPos().getX(), base.getPos().getY() - te.getPos().getY(), base.getPos().getZ() - te.getPos().getZ());
 
-                        TileEntityGlassRenderer.drawPlanes(base, mc.entityRenderer.fogColorRed, mc.entityRenderer.fogColorGreen, mc.entityRenderer.fogColorBlue, 1F, 0.501D);
+                        TileEntityGlassRenderer.drawPlanes(base, mc.entityRenderer.fogColorRed, mc.entityRenderer.fogColorGreen, mc.entityRenderer.fogColorBlue, 1F, 0.501D, partialTick);
 
                         GlStateManager.popMatrix();
                     }
@@ -186,15 +182,20 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
         }
     }
 
-    public static void drawPlanes(TileEntityGlassBase te, float r, float g, float b, float alpha, double pushback)
+    public static void drawPlanes(TileEntityGlassBase te, float r, float g, float b, float alpha, double pushback, float partialTick)
     {
+        boolean calcAlpha = alpha == -1;
+        if(calcAlpha) //calculate the alpha. not drawing planes.
+        {
+            alpha = (float)Math.pow(MathHelper.clamp((te.fadeoutTime - partialTick) / (float)TileEntityGlassBase.FADEOUT_TIME, 0F, 1F), 0.5D);
+        }
         Tessellator tessellator = Tessellator.getInstance();
         BufferBuilder bufferbuilder = tessellator.getBuffer();
 
         if(te instanceof TileEntityGlassMaster)
         {
             TileEntityGlassMaster master = (TileEntityGlassMaster)te;
-            if(!master.wirelessPos.isEmpty())
+            if(!master.wirelessPos.isEmpty() && master.setChannel.equalsIgnoreCase(master.channel))
             {
                 if(master.wirelessPos.size() == 1)
                 {
@@ -208,8 +209,27 @@ public class TileEntityGlassRenderer extends TileEntitySpecialRenderer<TileEntit
 
                     GlStateManager.glBegin(GL11.GL_TRIANGLE_STRIP);
                     GlStateManager.glVertex3f((float)(face.getFrontOffsetX() * pushback), (float)(face.getFrontOffsetY() * pushback), (float)(face.getFrontOffsetZ() * pushback));
-                    for(BlockPos pos : master.wirelessPos)
+                    ArrayList<BlockPos> wirelessPos = master.wirelessPos;
+                    for(int i = 0; i < wirelessPos.size(); i++)
                     {
+                        if(master.active && master.wirelessTime > (i - 1) * TileEntityGlassBase.PROPAGATE_TIME)
+                        {
+                            if(calcAlpha) //triangles = size() - 1
+                            {
+                                alpha = (float)Math.pow(MathHelper.clamp(1.0F - (((TileEntityGlassMaster)te).wirelessTime + partialTick - ((i - 1) * TileEntityGlassBase.PROPAGATE_TIME)) / (float)TileEntityGlassBase.FADEOUT_TIME, 0F, 1F), 0.5D);
+                            }
+                            GlStateManager.color(r, g, b, alpha);
+                        }
+                        else if(!master.active)
+                        {
+                            GlStateManager.color(r, g, b, alpha);
+                        }
+                        else
+                        {
+                            GlStateManager.color(r, g, b, 0F);
+                        }
+                        BlockPos pos = wirelessPos.get(i);
+
                         float pX = (float)(face.getFrontOffsetX() * pushback * (face.getFrontOffsetX() > 0 && pos.getX() > master.getPos().getX() ? -1D : 1D));
                         float pY = (float)(face.getFrontOffsetY() * pushback * (face.getFrontOffsetY() > 0 && pos.getY() > master.getPos().getY() ? -1D : 1D));
                         float pZ = (float)(face.getFrontOffsetZ() * pushback * (face.getFrontOffsetZ() > 0 && pos.getZ() > master.getPos().getZ() ? -1D : 1D));

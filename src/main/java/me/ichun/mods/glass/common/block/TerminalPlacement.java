@@ -90,7 +90,7 @@ public class TerminalPlacement extends WorldPortal
                 GlStateManager.pushMatrix();
                 GlStateManager.translate(base.getPos().getX() - renderCaller.getPos().getX(), base.getPos().getY() - renderCaller.getPos().getY(), base.getPos().getZ() - renderCaller.getPos().getZ());
 
-                TileEntityGlassRenderer.drawPlanes(base, 1F, 1F, 1F, 1F, 0.501D);
+                TileEntityGlassRenderer.drawPlanes(base, 1F, 1F, 1F, 1F, 0.501D, partialTick);
 
                 GlStateManager.popMatrix();
             }

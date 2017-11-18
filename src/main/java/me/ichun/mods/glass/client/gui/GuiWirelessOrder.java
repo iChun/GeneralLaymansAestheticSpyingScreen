@@ -51,6 +51,9 @@ public class GuiWirelessOrder extends GuiScreen
     public float rotateY = 0F;
     public float scale = 1F;
 
+    public boolean hasClicked = false;
+    public boolean releasedMouse = false;
+
     public int prevMouseX;
     public int prevMouseY;
 
@@ -78,6 +81,8 @@ public class GuiWirelessOrder extends GuiScreen
 
         rotateX = 0F;
         rotateY = 0F;
+
+        releasedMouse = false;
     }
 
     public FontRenderer getFontRenderer()
@@ -134,6 +139,11 @@ public class GuiWirelessOrder extends GuiScreen
     @Override
     public void updateScreen()
     {
+        if(!hasClicked)
+        {
+            rotateX += 2.5F;
+            releasedMouse = releasedMouse || !Mouse.isButtonDown(0);
+        }
     }
 
     @Override
@@ -187,8 +197,9 @@ public class GuiWirelessOrder extends GuiScreen
         {
             if(channels.size() != 1)
             {
-                if(prevMouseX != 0 && prevMouseY != 0 && mouseX > guiLeft + 100 && mouseX < guiLeft + 165 && mouseY > guiTop + 5 && mouseY < guiTop + 70 && Mouse.isButtonDown(0)) //dragging
+                if(prevMouseX != 0 && prevMouseY != 0 && mouseX > guiLeft + 100 && mouseX < guiLeft + 165 && mouseY > guiTop + 5 && mouseY < guiTop + 70 && releasedMouse && Mouse.isButtonDown(0)) //dragging
                 {
+                    hasClicked = true;
                     float mag = 1F;
                     rotateX += (mouseX - prevMouseX) * mag;
                     rotateY += (mouseY - prevMouseY) * mag;
@@ -196,7 +207,7 @@ public class GuiWirelessOrder extends GuiScreen
 
                 EnumFacing face = master.placingFace;
 
-                GlStateManager.translate(guiLeft + 135, guiTop + 40, 0F);
+                GlStateManager.translate(guiLeft + 135, guiTop + 40, 50F);
 
                 GlStateManager.scale(-5F * scale, -5F * scale, 5F * scale);
 
@@ -223,7 +234,7 @@ public class GuiWirelessOrder extends GuiScreen
                     String name = "(" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
                     int clr = RendererHelper.getRandomColourFromString(name);
                     RendererHelper.setColorFromInt(clr);
-                    GlStateManager.glVertex3f(pos.getX() - master.getPos().getX() + pX, pos.getY() - master.getPos().getY() + pY, pos.getZ() - master.getPos().getZ() + pZ);
+                    GlStateManager.glVertex3f((pos.getX() - master.getPos().getX() + pX), (pos.getY() - master.getPos().getY() + pY), (pos.getZ() - master.getPos().getZ() + pZ));
                 }
                 GlStateManager.glEnd();
 
