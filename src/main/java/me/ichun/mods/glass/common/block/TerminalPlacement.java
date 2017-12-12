@@ -99,13 +99,13 @@ public class TerminalPlacement extends WorldPortal
 
     public void generateActiveFaces() //TODO fix this
     {
-        renderAll = false;
+        boolean cullRender = true;
         HashSet<EnumFacing> faces = new HashSet<>();
         for(TileEntityGlassBase base : activeBlocks)
         {
             if(base instanceof TileEntityGlassMaster && !((TileEntityGlassMaster)base).wirelessPos.isEmpty())
             {
-                renderAll = true;
+                cullRender = false;
                 break;
             }
             if(base.active)
@@ -113,11 +113,12 @@ public class TerminalPlacement extends WorldPortal
                 faces.addAll(base.activeFaces);
                 if(faces.size() > 1)
                 {
-                    renderAll = true;
+                    cullRender = false;
                     break;
                 }
             }
         }
+        setCullRender(cullRender);
 
 /*
         ArrayList<BlockPos> poses = pair.getPoses();
