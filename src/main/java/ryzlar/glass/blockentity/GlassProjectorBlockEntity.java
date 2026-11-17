@@ -35,16 +35,10 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     //What to show
     public String channelId = "";
     public String channelName = "";
-    public String cameraId = "";
-    public boolean cycle;
-    public int cycleSeconds = 10;
-    private int cycleIndex;
-    private int cycleTimer;
     private int resolveTimer;
 
     //The camera being shown, resolved by the server
     public boolean camValid;
-    public String camName = "";
     public ResourceKey<Level> camDimension = Level.OVERWORLD;
     public BlockPos camPos = BlockPos.ZERO;
     public Direction camFacing = Direction.NORTH;
@@ -88,13 +82,7 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
             {
                 sync();
             }
-            if(cycle && ++cycleTimer >= cycleSeconds * 20)
-            {
-                cycleTimer = 0;
-                cycleIndex++;
-                resolveCamera(GlassNetworkManager.data(((ServerLevel)level).getServer()), false);
-            }
-            else if(++resolveTimer >= RESOLVE_INTERVAL)
+            if(++resolveTimer >= RESOLVE_INTERVAL)
             {
                 resolveTimer = 0;
                 resolveCamera(GlassNetworkManager.data(((ServerLevel)level).getServer()), false);
@@ -125,7 +113,6 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
             }
             channelId = "";
             channelName = "";
-            cameraId = "";
             changed = true;
         }
         if(channel != null && !channel.name.equals(channelName))
@@ -136,23 +123,9 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
 
         if(channel != null && level instanceof ServerLevel serverLevel)
         {
-            GlassNetworkManager.dropMissingCameras(serverLevel.getServer(), channel);
+            GlassNetworkManager.dropMissingCamera(serverLevel.getServer(), channel);
         }
-        GlassNetworkData.Camera camera = null;
-        if(channel != null && !channel.cameras.isEmpty())
-        {
-            if(cycle)
-            {
-                List<GlassNetworkData.Camera> cameras = new ArrayList<>(channel.cameras.values());
-                cycleIndex = Math.floorMod(cycleIndex, cameras.size());
-                camera = cameras.get(cycleIndex);
-            }
-            else
-            {
-                camera = channel.cameras.get(cameraId);
-            }
-        }
-        changed |= setCamera(camera);
+        changed |= setCamera(channel == null ? null : channel.camera);
         if(changed)
         {
             sync();
@@ -162,16 +135,14 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     private boolean setCamera(@Nullable GlassNetworkData.Camera camera)
     {
         boolean valid = camera != null;
-        String name = valid ? camera.name() : "";
         ResourceKey<Level> dimension = valid ? camera.dimension() : Level.OVERWORLD;
         BlockPos pos = valid ? camera.pos() : BlockPos.ZERO;
         Direction facing = valid ? camera.facing() : Direction.NORTH;
-        if(valid == camValid && name.equals(camName) && dimension.equals(camDimension) && pos.equals(camPos) && facing == camFacing)
+        if(valid == camValid && dimension.equals(camDimension) && pos.equals(camPos) && facing == camFacing)
         {
             return false;
         }
         camValid = valid;
-        camName = name;
         camDimension = dimension;
         camPos = pos;
         camFacing = facing;
@@ -225,12 +196,7 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         output.store("wirelessPos", BlockPos.CODEC.listOf(), List.copyOf(wirelessPos));
         output.putString("channelId", channelId);
         output.putString("channelName", channelName);
-        output.putString("cameraId", cameraId);
-        output.putBoolean("cycle", cycle);
-        output.putInt("cycleSeconds", cycleSeconds);
-        output.putInt("cycleIndex", cycleIndex);
         output.putBoolean("camValid", camValid);
-        output.putString("camName", camName);
         output.store("camDimension", Level.RESOURCE_KEY_CODEC, camDimension);
         output.store("camPos", BlockPos.CODEC, camPos);
         output.store("camFacing", Direction.CODEC, camFacing);
@@ -245,12 +211,7 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         wirelessPos = new ArrayList<>(input.read("wirelessPos", BlockPos.CODEC.listOf()).orElse(List.of()));
         channelId = input.getStringOr("channelId", "");
         channelName = input.getStringOr("channelName", "");
-        cameraId = input.getStringOr("cameraId", "");
-        cycle = input.getBooleanOr("cycle", false);
-        cycleSeconds = input.getIntOr("cycleSeconds", 10);
-        cycleIndex = input.getIntOr("cycleIndex", 0);
         camValid = input.getBooleanOr("camValid", false);
-        camName = input.getStringOr("camName", "");
         camDimension = input.read("camDimension", Level.RESOURCE_KEY_CODEC).orElse(Level.OVERWORLD);
         camPos = input.read("camPos", BlockPos.CODEC).orElse(BlockPos.ZERO);
         camFacing = input.read("camFacing", Direction.CODEC).orElse(Direction.NORTH);
@@ -261,10 +222,5 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     public String cameraSignature()
     {
         return camValid ? camDimension.location() + "|" + camPos.asLong() + "|" + camFacing : "";
-    }
-
-    public boolean sameCamera(GlassProjectorBlockEntity other)
-    {
-        return Objects.equals(cameraSignature(), other.cameraSignature());
     }
 }

@@ -9,12 +9,12 @@ import ryzlar.glass.network.GlassNetworking;
 import java.util.List;
 
 /**
- * What the client knows about the GLASS network: the logged-in account, its channels and cameras, and the server's
- * answer to the last action. Screens read this and redraw when {@link #version()} changes.
+ * What the client knows about the GLASS channels (every channel's name, owner and whether you may use it) and the
+ * server's answer to the last action. Screens read this and redraw when {@link #version()} changes.
  */
 public final class GlassNetClient
 {
-    private static GlassNetworking.NetworkState state = new GlassNetworking.NetworkState("", List.of());
+    private static GlassNetworking.NetworkState state = new GlassNetworking.NetworkState(List.of());
     private static int version;
     @Nullable
     private static GlassNetworking.ActionResult lastResult;
@@ -37,7 +37,7 @@ public final class GlassNetClient
 
     public static void reset()
     {
-        state = new GlassNetworking.NetworkState("", List.of());
+        state = new GlassNetworking.NetworkState(List.of());
         lastResult = null;
         version++;
     }
@@ -45,16 +45,6 @@ public final class GlassNetClient
     public static int version()
     {
         return version;
-    }
-
-    public static boolean loggedIn()
-    {
-        return !state.account().isEmpty();
-    }
-
-    public static String account()
-    {
-        return state.account();
     }
 
     public static List<GlassNetworking.ChannelInfo> channels()

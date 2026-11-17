@@ -12,37 +12,25 @@ import net.minecraft.world.level.saveddata.SavedDataType;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * The GLASS network of one world: accounts, channels and the cameras on them. Saved with the overworld
- * (data/glass_network.dat), so it is shared by every dimension.
+ * The GLASS channels of one world, saved with the overworld (data/glass_channels.dat) so every dimension shares them.
+ * <p>
+ * A channel is one camera (a terminal), owned by the player who made it and protected by a password. Players who
+ * enter the password are remembered and do not need it again, until the owner changes it.
  */
 public class GlassNetworkData extends SavedData
 {
-    public record Account(String username, String salt, String hash, int iterations, UUID creator)
-    {
-        public static final Codec<Account> CODEC = RecordCodecBuilder.create(i -> i.group(
-                Codec.STRING.fieldOf("username").forGetter(Account::username),
-                Codec.STRING.fieldOf("salt").forGetter(Account::salt),
-                Codec.STRING.fieldOf("hash").forGetter(Account::hash),
-                Codec.INT.fieldOf("iterations").forGetter(Account::iterations),
-                UUIDUtil.CODEC.fieldOf("creator").forGetter(Account::creator)
-        ).apply(i, Account::new));
-    }
-
-    public record Camera(String id, String name, ResourceKey<Level> dimension, BlockPos pos, Direction facing)
+    public record Camera(ResourceKey<Level> dimension, BlockPos pos, Direction facing)
     {
         public static final Codec<Camera> CODEC = RecordCodecBuilder.create(i -> i.group(
-                Codec.STRING.fieldOf("id").forGetter(Camera::id),
-                Codec.STRING.fieldOf("name").forGetter(Camera::name),
                 Level.RESOURCE_KEY_CODEC.fieldOf("dimension").forGetter(Camera::dimension),
                 BlockPos.CODEC.fieldOf("pos").forGetter(Camera::pos),
                 Direction.CODEC.fieldOf("facing").forGetter(Camera::facing)
@@ -54,87 +42,66 @@ public class GlassNetworkData extends SavedData
         public static final Codec<Channel> CODEC = RecordCodecBuilder.create(i -> i.group(
                 Codec.STRING.fieldOf("id").forGetter(c -> c.id),
                 Codec.STRING.fieldOf("name").forGetter(c -> c.name),
-                Codec.STRING.fieldOf("owner").forGetter(c -> c.owner),
+                UUIDUtil.CODEC.fieldOf("owner").forGetter(c -> c.owner),
+                Codec.STRING.fieldOf("ownerName").forGetter(c -> c.ownerName),
                 Codec.STRING.fieldOf("salt").forGetter(c -> c.salt),
                 Codec.STRING.fieldOf("hash").forGetter(c -> c.hash),
                 Codec.INT.fieldOf("iterations").forGetter(c -> c.iterations),
-                Codec.STRING.listOf().fieldOf("members").forGetter(c -> List.copyOf(c.members)),
-                Camera.CODEC.listOf().fieldOf("cameras").forGetter(c -> List.copyOf(c.cameras.values()))
+                UUIDUtil.CODEC.listOf().fieldOf("members").forGetter(c -> List.copyOf(c.members)),
+                Camera.CODEC.optionalFieldOf("camera").forGetter(c -> Optional.ofNullable(c.camera))
         ).apply(i, Channel::new));
 
         public final String id;
-        public String name;
-        /** Owner's account key (lower case username). */
-        public String owner;
+        public final String name;
+        public final UUID owner;
+        /** The owner's username when last seen, for display. */
+        public String ownerName;
         public String salt;
         public String hash;
         public int iterations;
-        /** Account keys that know the password (the owner is always one). */
-        public final Set<String> members = new LinkedHashSet<>();
-        public final Map<String, Camera> cameras = new LinkedHashMap<>();
+        /** Players (besides the owner) who entered the password. */
+        public final Set<UUID> members = new LinkedHashSet<>();
+        @Nullable
+        public Camera camera;
 
-        public Channel(String id, String name, String owner, String salt, String hash, int iterations, List<String> members, List<Camera> cameras)
+        public Channel(String id, String name, UUID owner, String ownerName, String salt, String hash, int iterations, List<UUID> members, Optional<Camera> camera)
         {
             this.id = id;
             this.name = name;
             this.owner = owner;
+            this.ownerName = ownerName;
             this.salt = salt;
             this.hash = hash;
             this.iterations = iterations;
             this.members.addAll(members);
-            for(Camera camera : cameras)
-            {
-                this.cameras.put(camera.id(), camera);
-            }
+            this.camera = camera.orElse(null);
         }
 
-        public boolean isMember(@Nullable String account)
+        public boolean isOwner(UUID player)
         {
-            return account != null && members.contains(account);
+            return owner.equals(player);
+        }
+
+        public boolean hasAccess(UUID player)
+        {
+            return isOwner(player) || members.contains(player);
         }
     }
 
-    private record Stored(List<Account> accounts, List<Channel> channels, Map<String, String> remembered)
-    {
-        static final Codec<Stored> CODEC = RecordCodecBuilder.create(i -> i.group(
-                Account.CODEC.listOf().optionalFieldOf("accounts", List.of()).forGetter(Stored::accounts),
-                Channel.CODEC.listOf().optionalFieldOf("channels", List.of()).forGetter(Stored::channels),
-                Codec.unboundedMap(Codec.STRING, Codec.STRING).optionalFieldOf("remembered", Map.of()).forGetter(Stored::remembered)
-        ).apply(i, Stored::new));
-    }
+    public static final Codec<GlassNetworkData> CODEC = Channel.CODEC.listOf().optionalFieldOf("channels", List.of()).codec()
+            .xmap(GlassNetworkData::new, data -> new ArrayList<>(data.channels.values()));
+    public static final SavedDataType<GlassNetworkData> TYPE = new SavedDataType<>("glass_channels", GlassNetworkData::new, CODEC, null);
 
-    public static final Codec<GlassNetworkData> CODEC = Stored.CODEC.xmap(GlassNetworkData::new, GlassNetworkData::toStored);
-    public static final SavedDataType<GlassNetworkData> TYPE = new SavedDataType<>("glass_network", GlassNetworkData::new, CODEC, null);
-
-    /** Lower case username to account. */
-    public final Map<String, Account> accounts = new LinkedHashMap<>();
     public final Map<String, Channel> channels = new LinkedHashMap<>();
-    /** Minecraft player UUID (as text) to the account they stay logged in to. */
-    public final Map<String, String> remembered = new HashMap<>();
 
     public GlassNetworkData() {}
 
-    private GlassNetworkData(Stored stored)
+    private GlassNetworkData(List<Channel> list)
     {
-        for(Account account : stored.accounts())
-        {
-            accounts.put(key(account.username()), account);
-        }
-        for(Channel channel : stored.channels())
+        for(Channel channel : list)
         {
             channels.put(channel.id, channel);
         }
-        remembered.putAll(stored.remembered());
-    }
-
-    private Stored toStored()
-    {
-        return new Stored(new ArrayList<>(accounts.values()), new ArrayList<>(channels.values()), new HashMap<>(remembered));
-    }
-
-    public static String key(String name)
-    {
-        return name.toLowerCase(Locale.ROOT);
     }
 
     @Nullable
@@ -148,12 +115,5 @@ public class GlassNetworkData extends SavedData
             }
         }
         return null;
-    }
-
-    @Nullable
-    public Camera camera(String channelId, String cameraId)
-    {
-        Channel channel = channels.get(channelId);
-        return channel == null ? null : channel.cameras.get(cameraId);
     }
 }

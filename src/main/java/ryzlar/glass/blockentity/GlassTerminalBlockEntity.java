@@ -7,7 +7,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -20,16 +19,13 @@ import ryzlar.glass.network.GlassNetworkData;
 import ryzlar.glass.network.GlassNetworkManager;
 
 /**
- * The GLASS terminal: a camera on a GLASS channel. A channel can have several cameras; projectors pick one of them or
- * cycle through them all.
+ * The GLASS terminal: the camera of a GLASS channel. Each channel has one camera; the channel is made at the terminal.
  */
 public class GlassTerminalBlockEntity extends BlockEntity
 {
     private static final int VALIDATE_INTERVAL = 40;
 
     public String channelId = "";
-    public String cameraId = "";
-    public String cameraName = "";
     public Direction facing = Direction.UP;
 
     private int validateTimer;
@@ -41,10 +37,10 @@ public class GlassTerminalBlockEntity extends BlockEntity
 
     public boolean isLinked()
     {
-        return !cameraId.isEmpty();
+        return !channelId.isEmpty();
     }
 
-    /** Server: drop the link if the channel or camera was removed from the network (or this is a copy of a terminal). */
+    /** Server: drop the link if the channel was deleted or moved its camera elsewhere (or this is a copy of a terminal). */
     public static void serverTick(Level level, BlockPos pos, BlockState state, GlassTerminalBlockEntity terminal)
     {
         if(!terminal.isLinked() || ++terminal.validateTimer < VALIDATE_INTERVAL)
@@ -52,28 +48,13 @@ public class GlassTerminalBlockEntity extends BlockEntity
             return;
         }
         terminal.validateTimer = 0;
-        GlassNetworkData.Camera camera = GlassNetworkManager.data(((ServerLevel)level).getServer()).camera(terminal.channelId, terminal.cameraId);
+        GlassNetworkData.Channel channel = GlassNetworkManager.data(((ServerLevel)level).getServer()).channels.get(terminal.channelId);
+        GlassNetworkData.Camera camera = channel == null ? null : channel.camera;
         if(camera == null || !camera.pos().equals(pos) || !camera.dimension().equals(level.dimension()))
         {
-            terminal.clearLink();
+            terminal.channelId = "";
+            terminal.sync();
         }
-    }
-
-    public void unlink(MinecraftServer server)
-    {
-        if(isLinked())
-        {
-            GlassNetworkManager.forgetCamera(server, channelId, cameraId);
-        }
-        clearLink();
-    }
-
-    private void clearLink()
-    {
-        channelId = "";
-        cameraId = "";
-        cameraName = "";
-        sync();
     }
 
     /** The terminal was broken (not just unloaded): take its camera off the network. */
@@ -83,7 +64,7 @@ public class GlassTerminalBlockEntity extends BlockEntity
         super.preRemoveSideEffects(pos, state);
         if(level instanceof ServerLevel serverLevel && isLinked())
         {
-            GlassNetworkManager.forgetCamera(serverLevel.getServer(), channelId, cameraId);
+            GlassNetworkManager.forgetCamera(serverLevel.getServer(), channelId, serverLevel, pos);
         }
     }
 
@@ -102,8 +83,6 @@ public class GlassTerminalBlockEntity extends BlockEntity
     {
         super.saveAdditional(output);
         output.putString("channelId", channelId);
-        output.putString("cameraId", cameraId);
-        output.putString("cameraName", cameraName);
         output.store("facing", Direction.CODEC, facing);
     }
 
@@ -112,8 +91,6 @@ public class GlassTerminalBlockEntity extends BlockEntity
     {
         super.loadAdditional(input);
         channelId = input.getStringOr("channelId", "");
-        cameraId = input.getStringOr("cameraId", "");
-        cameraName = input.getStringOr("cameraName", "");
         facing = input.read("facing", Direction.CODEC).orElse(Direction.UP);
     }
 

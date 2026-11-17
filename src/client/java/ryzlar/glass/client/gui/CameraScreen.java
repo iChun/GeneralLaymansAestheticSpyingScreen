@@ -4,34 +4,45 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.client.GlassNetClient;
 import ryzlar.glass.client.gui.holo.Holo;
 import ryzlar.glass.client.gui.holo.HoloButton;
 import ryzlar.glass.client.gui.holo.HoloField;
 import ryzlar.glass.client.gui.holo.HoloList;
+import ryzlar.glass.client.gui.holo.HoloPasswordField;
 import ryzlar.glass.client.gui.holo.HoloScreen;
 import ryzlar.glass.network.GlassNetworkManager;
 import ryzlar.glass.network.GlassNetworking;
 
+import java.util.List;
+
 /**
- * A terminal is a camera: give it a name and put it on one of your channels.
+ * The terminal is a camera. Here you make a channel for it (a name nobody has used, and a password), or, as its owner,
+ * change the channel's password, stop using this terminal, or delete the channel.
  */
 public class CameraScreen extends HoloScreen
 {
     private final GlassTerminalBlockEntity terminal;
-    private HoloList<GlassNetworking.ChannelInfo> channels;
-    private HoloField name;
-    private HoloButton link;
-    private HoloButton unlink;
-    private String nameValue;
+    private boolean linkedView;
+    private boolean confirmDelete;
+
+    @Nullable
+    private HoloField nameField;
+    @Nullable
+    private HoloPasswordField passwordField;
+    @Nullable
+    private HoloPasswordField confirmField;
+    @Nullable
+    private HoloList<GlassNetworking.ChannelInfo> ownChannels;
+    @Nullable
+    private HoloButton useHere;
 
     public CameraScreen(GlassTerminalBlockEntity terminal)
     {
-        super(Component.translatable("glass.ui.camera"), 330, 210);
+        super(Component.translatable("glass.ui.camera"), 330, 214);
         this.terminal = terminal;
-        BlockPos pos = terminal.getBlockPos();
-        this.nameValue = terminal.cameraName.isEmpty() ? "CAM-" + Math.floorMod(pos.getX() * 31 + pos.getZ() * 17 + pos.getY(), 1000) : terminal.cameraName;
     }
 
     @Override
@@ -41,80 +52,169 @@ public class CameraScreen extends HoloScreen
         return Component.translatable("glass.ui.camera.sub", pos.getX(), pos.getY(), pos.getZ(), terminal.facing.getSerializedName().toUpperCase());
     }
 
+    @Nullable
+    private GlassNetworking.ChannelInfo channel()
+    {
+        return GlassNetClient.channel(terminal.channelId);
+    }
+
     @Override
     protected void build()
     {
-        channels = new HoloList<GlassNetworking.ChannelInfo>(left + 10, top + 52, 150, 118,
-                c -> Component.literal(c.name()),
-                c -> Component.literal(c.owner() ? "★ " + c.cameras().size() : Integer.toString(c.cameras().size())),
-                Component.translatable("glass.ui.noChannels"))
-                .keyedBy(GlassNetworking.ChannelInfo::id)
-                .onActivate(c -> doLink());
-        addRenderableWidget(channels);
+        linkedView = terminal.isLinked();
+        nameField = null;
+        passwordField = null;
+        confirmField = null;
+        ownChannels = null;
+        useHere = null;
+        int lx = left + 12;
+        int lw = 150;
+        int rx = left + 174;
+        int rw = panelW - 186;
 
-        int rx = left + 172;
-        int rw = panelW - 182;
-        name = new HoloField(font, rx, top + 52, rw, 16, Component.translatable("glass.ui.cameraName"));
-        name.setMaxLength(GlassNetworkManager.MAX_CAMERA_NAME);
-        name.setValue(nameValue);
-        name.setResponder(v -> nameValue = v);
-        addRenderableWidget(name);
+        if(!linkedView)
+        {
+            //Left: make a new channel here.
+            nameField = addRenderableWidget(new HoloField(font, lx, top + 62, lw, 16, Component.translatable("glass.ui.channelName")));
+            nameField.setMaxLength(24);
+            passwordField = addRenderableWidget(new HoloPasswordField(font, lx, top + 94, lw, 16, Component.translatable("glass.ui.password"), GlassNetworkManager.MAX_PASSWORD));
+            confirmField = addRenderableWidget(new HoloPasswordField(font, lx, top + 126, lw, 16, Component.translatable("glass.ui.confirmPassword"), GlassNetworkManager.MAX_PASSWORD));
+            addRenderableWidget(new HoloButton(lx, top + 150, lw, 18, Component.translatable("glass.ui.createChannel"), b -> create()));
+            setInitialFocus(nameField);
 
-        link = addRenderableWidget(new HoloButton(rx, top + 124, rw, 16, Component.translatable("glass.ui.linkCamera"), b -> doLink()));
-        unlink = addRenderableWidget(new HoloButton(rx, top + 144, rw, 16, Component.translatable("glass.ui.unlinkCamera"), b -> doUnlink(), true));
-        addRenderableWidget(new HoloButton(left + 10, top + panelH - 34, 150, 16, Component.translatable("glass.ui.openNetwork"), b -> minecraft.setScreen(new NetworkScreen(this))));
+            //Right: or move one of your own channels to this terminal.
+            ownChannels = addRenderableWidget(new HoloList<GlassNetworking.ChannelInfo>(rx, top + 52, rw, 96,
+                    c -> Component.literal(c.name()),
+                    c -> c.online() ? Component.translatable("glass.ui.online") : Component.translatable("glass.ui.offline"),
+                    Component.translatable("glass.ui.noOwnChannels"))
+                    .keyedBy(GlassNetworking.ChannelInfo::id));
+            useHere = addRenderableWidget(new HoloButton(rx, top + 152, rw, 16, Component.translatable("glass.ui.useHere"), b -> useHere()));
+            return;
+        }
+
+        GlassNetworking.ChannelInfo channel = channel();
+        if(channel != null && channel.owner())
+        {
+            passwordField = addRenderableWidget(new HoloPasswordField(font, rx, top + 62, rw, 16, Component.translatable("glass.ui.newPassword"), GlassNetworkManager.MAX_PASSWORD));
+            confirmField = addRenderableWidget(new HoloPasswordField(font, rx, top + 94, rw, 16, Component.translatable("glass.ui.confirmPassword"), GlassNetworkManager.MAX_PASSWORD));
+            addRenderableWidget(new HoloButton(rx, top + 116, rw, 14, Component.translatable("glass.ui.setPassword"), b -> changePassword()));
+            addRenderableWidget(new HoloButton(lx, top + 134, lw, 14, Component.translatable("glass.ui.detach"), b ->
+                    ClientPlayNetworking.send(GlassNetworking.TerminalAction.of(terminal.getBlockPos(), GlassNetworking.TerminalCommand.DETACH, "", "")), true));
+            addRenderableWidget(new HoloButton(lx, top + 152, lw, 14,
+                    Component.translatable(confirmDelete ? "glass.ui.confirmDelete" : "glass.ui.deleteChannel"), b -> delete(), true));
+        }
     }
 
-    @Override
-    protected void refresh()
+    private void create()
     {
-        channels.setItems(GlassNetClient.channels());
-        if(channels.getSelected() == null)
+        if(nameField == null || passwordField == null || confirmField == null)
         {
-            channels.selectWhere(c -> c.id().equals(terminal.channelId));
-            if(channels.getSelected() == null)
+            return;
+        }
+        if(nameField.getValue().isBlank() || passwordField.getValue().isEmpty())
+        {
+            warn(Component.translatable("glass.msg.fillIn"));
+            return;
+        }
+        if(!passwordField.getValue().equals(confirmField.getValue()))
+        {
+            warn(Component.translatable("glass.msg.passwordsDiffer"));
+            return;
+        }
+        String name = nameField.getValue().trim();
+        for(GlassNetworking.ChannelInfo existing : GlassNetClient.channels())
+        {
+            if(existing.name().equalsIgnoreCase(name))
             {
-                channels.selectIndex(0);
+                warn(Component.translatable("glass.msg.channelTaken"));
+                return;
             }
         }
-        unlink.active = terminal.isLinked();
+        clearWarning();
+        ClientPlayNetworking.send(GlassNetworking.TerminalAction.of(terminal.getBlockPos(), GlassNetworking.TerminalCommand.CREATE, name, passwordField.getValue()));
     }
 
-    private void doLink()
+    private void useHere()
     {
-        GlassNetworking.ChannelInfo channel = channels.getSelected();
+        GlassNetworking.ChannelInfo channel = ownChannels == null ? null : ownChannels.getSelected();
         if(channel == null)
         {
             warn(Component.translatable("glass.msg.pickChannel"));
             return;
         }
-        if(name.getValue().isBlank())
-        {
-            warn(Component.translatable("glass.msg.badCameraName"));
-            return;
-        }
-        clearWarning();
-        ClientPlayNetworking.send(new GlassNetworking.LinkCamera(terminal.getBlockPos(), channel.id(), name.getValue().trim()));
+        ClientPlayNetworking.send(GlassNetworking.TerminalAction.of(terminal.getBlockPos(), GlassNetworking.TerminalCommand.MOVE_HERE, channel.id(), ""));
     }
 
-    private void doUnlink()
+    private void changePassword()
     {
-        ClientPlayNetworking.send(new GlassNetworking.LinkCamera(terminal.getBlockPos(), "", ""));
+        GlassNetworking.ChannelInfo channel = channel();
+        if(channel == null || passwordField == null || confirmField == null)
+        {
+            return;
+        }
+        if(passwordField.getValue().isEmpty() || !passwordField.getValue().equals(confirmField.getValue()))
+        {
+            warn(Component.translatable("glass.msg.passwordsDiffer"));
+            return;
+        }
+        GlassNetClient.send(GlassNetworking.Action.CHANGE_PASSWORD, channel.id(), passwordField.getValue());
+        passwordField.setValue("");
+        confirmField.setValue("");
+    }
+
+    private void delete()
+    {
+        GlassNetworking.ChannelInfo channel = channel();
+        if(channel == null)
+        {
+            return;
+        }
+        if(!confirmDelete)
+        {
+            confirmDelete = true;
+            rebuildWidgets();
+            return;
+        }
+        confirmDelete = false;
+        GlassNetClient.send(GlassNetworking.Action.DELETE_CHANNEL, channel.id());
     }
 
     @Override
     protected void onEnter()
     {
-        doLink();
+        if(!linkedView)
+        {
+            create();
+        }
+        else if(passwordField != null && !passwordField.getValue().isEmpty())
+        {
+            changePassword();
+        }
+    }
+
+    @Override
+    protected void refresh()
+    {
+        if(ownChannels != null)
+        {
+            List<GlassNetworking.ChannelInfo> own = GlassNetClient.channels().stream().filter(GlassNetworking.ChannelInfo::owner).toList();
+            ownChannels.setItems(own);
+        }
+        if(useHere != null)
+        {
+            useHere.active = ownChannels != null && !ownChannels.items().isEmpty();
+        }
     }
 
     @Override
     public void tick()
     {
         super.tick();
-        if(unlink != null)
+        //The terminal got linked or unlinked (by us or someone else): switch layouts.
+        if(linkedView != terminal.isLinked())
         {
-            unlink.active = terminal.isLinked();
+            confirmDelete = false;
+            rebuildWidgets();
         }
     }
 
@@ -126,23 +226,40 @@ public class CameraScreen extends HoloScreen
         {
             return;
         }
-        Holo.label(g, font, Component.translatable("glass.ui.channels"), left + 10, top + 41);
-        int rx = left + 172;
-        Holo.label(g, font, Component.translatable("glass.ui.cameraName"), rx, top + 41);
-        Holo.label(g, font, Component.translatable("glass.ui.status"), rx, top + 78);
-        if(terminal.isLinked())
+        int lx = left + 12;
+        int rx = left + 174;
+        int rw = panelW - 186;
+        if(!linkedView)
         {
-            GlassNetworking.ChannelInfo channel = GlassNetClient.channel(terminal.channelId);
-            Component channelName = channel != null ? Component.literal(channel.name()) : Component.translatable("glass.ui.restricted");
-            g.drawString(font, Component.translatable("glass.ui.linked").withColor(Holo.OK), rx, top + 90, Holo.OK, false);
-            g.drawString(font, Component.literal("▸ ").append(channelName), rx, top + 101, Holo.TEXT, false);
-            g.drawString(font, Component.literal("▸ " + terminal.cameraName), rx, top + 111, Holo.MUTED, false);
+            Holo.label(g, font, Component.translatable("glass.ui.newChannel"), lx, top + 41);
+            g.drawString(font, Component.translatable("glass.ui.channelName"), lx, top + 52, Holo.MUTED, false);
+            g.drawString(font, Component.translatable("glass.ui.password"), lx, top + 84, Holo.MUTED, false);
+            g.drawString(font, Component.translatable("glass.ui.confirmPassword"), lx, top + 116, Holo.MUTED, false);
+            Holo.label(g, font, Component.translatable("glass.ui.orYourChannels"), rx, top + 41);
+            return;
+        }
+
+        GlassNetworking.ChannelInfo channel = channel();
+        Holo.label(g, font, Component.translatable("glass.ui.channel"), lx, top + 41);
+        if(channel == null)
+        {
+            g.drawString(font, Component.translatable("glass.ui.restricted"), lx, top + 56, Holo.MUTED, false);
+            return;
+        }
+        g.drawString(font, font.plainSubstrByWidth(channel.name(), 150), lx, top + 56, Holo.TEXT, false);
+        g.drawString(font, Component.translatable("glass.ui.ownedBy", channel.ownerName()), lx, top + 70, Holo.MUTED, false);
+        g.drawString(font, Component.translatable("glass.ui.broadcasting"), lx, top + 88, Holo.withAlpha(Holo.OK, 0.6F + 0.4F * Holo.pulse(4F)), false);
+        if(channel.owner())
+        {
+            Holo.label(g, font, Component.translatable("glass.ui.changePassword"), rx, top + 41);
+            g.drawString(font, Component.translatable("glass.ui.newPassword"), rx, top + 52, Holo.MUTED, false);
+            g.drawString(font, Component.translatable("glass.ui.confirmPassword"), rx, top + 84, Holo.MUTED, false);
+            g.drawString(font, font.plainSubstrByWidth(Component.translatable("glass.ui.passwordResetNote").getString(), rw), rx, top + 136, Holo.WARN, false);
+            Holo.label(g, font, Component.translatable("glass.ui.manage"), lx, top + 122);
         }
         else
         {
-            float blink = Holo.pulse(5F);
-            g.drawString(font, Component.translatable("glass.ui.unlinked"), rx, top + 90, Holo.withAlpha(Holo.WARN, 0.5F + 0.5F * blink), false);
-            g.drawString(font, Component.translatable("glass.ui.unlinkedHint"), rx, top + 101, Holo.MUTED, false);
+            g.drawString(font, Component.translatable("glass.ui.notOwner"), lx, top + 106, Holo.MUTED, false);
         }
     }
 }

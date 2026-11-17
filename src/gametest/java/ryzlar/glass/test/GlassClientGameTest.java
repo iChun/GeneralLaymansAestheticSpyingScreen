@@ -5,9 +5,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,20 +13,22 @@ import ryzlar.glass.blockentity.GlassBaseBlockEntity;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.client.gui.CameraScreen;
-import ryzlar.glass.client.gui.LoginScreen;
-import ryzlar.glass.client.gui.NetworkScreen;
 import ryzlar.glass.client.gui.ProjectorScreen;
 import ryzlar.glass.client.gui.WirelessOrderScreen;
 import ryzlar.glass.network.GlassNetworkData;
 import ryzlar.glass.network.GlassNetworkManager;
+import ryzlar.glass.network.PasswordHasher;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Builds GLASS screens and cameras in a flat test world and takes screenshots (in build/run/clientGameTest/screenshots).
  * Run with {@code ./gradlew runClientGameTest}.
  * <p>
- * Covers: accounts and channel passwords (through the server-side API, so the checks are real), linking cameras,
- * the screen turning on and off, the camera view, auto-cycling between cameras, wireless screens, view bobbing, and
- * every GLASS screen (GUI).
+ * Covers: channel names and passwords (through the server-side API, so the checks are real), one camera per channel,
+ * the screen turning on and off, the camera view, wireless screens, view bobbing, and the GLASS screens (GUI).
  */
 public class GlassClientGameTest implements FabricClientGameTest
 {
@@ -37,6 +37,7 @@ public class GlassClientGameTest implements FabricClientGameTest
     private static final BlockPos PROJECTOR = new BlockPos(0, -58, 0);
     private static final BlockPos GOLD_CAMERA = new BlockPos(40, -59, 0);
     private static final BlockPos DIAMOND_CAMERA = new BlockPos(80, -59, 0);
+    private static final BlockPos SPARE_TERMINAL = new BlockPos(5, -60, 6);
     private static final BlockPos WIRELESS_PROJECTOR = new BlockPos(-14, -59, 6);
     private static final BlockPos WINDOW_PROJECTOR = new BlockPos(23, -60, 30);
     private static final BlockPos WINDOW_CAMERA = new BlockPos(23, -60, 31);
@@ -55,33 +56,27 @@ public class GlassClientGameTest implements FabricClientGameTest
         return server.getPlayerList().getPlayers().getFirst();
     }
 
-    /** Links the terminal at {@code pos} as a camera on {@code channelId}, like the camera screen does. */
-    private static void linkCamera(MinecraftServer server, String channelId, BlockPos pos, String name)
+    private static GlassTerminalBlockEntity terminal(MinecraftServer server, BlockPos pos)
     {
-        ServerLevel level = server.overworld();
-        GlassTerminalBlockEntity terminal = (GlassTerminalBlockEntity)level.getBlockEntity(pos);
-        GlassNetworkManager.Result result = GlassNetworkManager.linkCamera(player(server), channelId, null, null, name, level.dimension(), pos, terminal.facing);
-        check(result.ok(), "camera " + name + " linked");
-        terminal.channelId = channelId;
-        terminal.cameraId = result.arg();
-        terminal.cameraName = name;
-        terminal.sync();
+        return (GlassTerminalBlockEntity)server.overworld().getBlockEntity(pos);
     }
 
-    private static String cameraId(MinecraftServer server, BlockPos pos)
+    /** Makes a channel at the terminal at {@code pos}, like the camera screen does. Returns its id. */
+    private static String create(MinecraftServer server, BlockPos pos, String name, String password)
     {
-        return ((GlassTerminalBlockEntity)server.overworld().getBlockEntity(pos)).cameraId;
+        GlassNetworkManager.Result result = GlassNetworkManager.createChannel(player(server), terminal(server, pos), name, password);
+        check(result.ok(), "channel " + name + " created");
+        return terminal(server, pos).channelId;
     }
 
     /** Tunes the projector at {@code pos}, like the projector screen does. */
-    private static void tune(MinecraftServer server, BlockPos pos, String channelId, String cameraId, boolean cycle, int seconds)
+    private static void tune(MinecraftServer server, BlockPos pos, String channelId)
     {
+        GlassNetworkData data = GlassNetworkManager.data(server);
         GlassProjectorBlockEntity projector = (GlassProjectorBlockEntity)server.overworld().getBlockEntity(pos);
         projector.channelId = channelId;
-        projector.cameraId = cameraId;
-        projector.cycle = cycle;
-        projector.cycleSeconds = seconds;
-        projector.resolveCamera(GlassNetworkManager.data(server), true);
+        projector.channelName = data.channels.get(channelId).name;
+        projector.resolveCamera(data, true);
     }
 
     private static int countActive(MinecraftServer server)
@@ -109,37 +104,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("gamerule doWeatherCycle false");
             server.runCommand("weather clear");
 
-            //The login screen, before there is an account.
-            context.setScreen(() -> new LoginScreen(() -> null));
-            context.waitTicks(10);
-            context.takeScreenshot("gui_login");
-            context.setScreen(() -> null);
-
-            //Accounts and channel passwords.
-            String channelId = server.computeOnServer(s -> {
-                ServerPlayer p = player(s);
-                check(GlassNetworkManager.register(p, "operator", "hunter22", false).ok(), "account registered");
-                check(!GlassNetworkManager.register(p, "Operator", "whatever", false).ok(), "duplicate username refused (case-insensitive)");
-                check(GlassNetworkManager.createChannel(p, "Gold Net", "goldpass").ok(), "channel created");
-                check(!GlassNetworkManager.createChannel(p, "gold net", "other").ok(), "duplicate channel name refused");
-                GlassNetworkData.Channel channel = GlassNetworkManager.data(s).channelByName("Gold Net");
-                check(channel != null && !channel.hash.contains("goldpass"), "channel password stored hashed");
-
-                check(GlassNetworkManager.logout(p).ok(), "logged out");
-                check(GlassNetworkManager.register(p, "visitor", "visitor1", false).ok(), "second account registered");
-                check(!GlassNetworkManager.joinChannel(p, "Gold Net", "wrong").ok(), "wrong channel password refused");
-                check(GlassNetworkManager.joinChannel(p, "Gold Net", "goldpass").ok(), "right channel password accepted");
-                check(!GlassNetworkManager.deleteChannel(p, channel.id).ok(), "members cannot delete");
-                GlassNetworkManager.logout(p);
-                check(!GlassNetworkManager.login(p, "operator", "nope", false).ok(), "wrong account password refused");
-                check(GlassNetworkManager.login(p, "operator", "hunter22", true).ok(), "logged back in");
-                check(GlassNetworkManager.kickMember(p, channel.id, "visitor").ok(), "owner kicked a member");
-                check(!channel.isMember("visitor"), "kicked member is gone");
-                GlassNetworkManager.syncAll(s);
-                return channel.id;
-            });
-
-            //Two cameras on the channel: one looking at pillars and a gold wall, one at a diamond wall.
+            //Two cameras: one looking at pillars and a gold wall, one at a diamond wall. A spare terminal for the GUI.
             server.runCommand("fill 38 -60 -6 38 -55 -6 minecraft:red_wool");
             server.runCommand("fill 40 -60 -6 40 -55 -6 minecraft:blue_wool");
             server.runCommand("fill 42 -60 -6 42 -55 -6 minecraft:yellow_wool");
@@ -149,51 +114,74 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("fill 75 -60 9 85 -52 9 minecraft:diamond_block");
             server.runCommand("setblock 40 -59 0 generallaymansaestheticspyingscreen:glass_terminal{facing:\"north\"}");
             server.runCommand("setblock 80 -59 0 generallaymansaestheticspyingscreen:glass_terminal{facing:\"south\"}");
+            server.runCommand("setblock 5 -60 6 generallaymansaestheticspyingscreen:glass_terminal{facing:\"south\"}");
             context.waitTicks(2);
-            server.runOnServer(s -> {
-                linkCamera(s, channelId, GOLD_CAMERA, "Gold Wall");
-                linkCamera(s, channelId, DIAMOND_CAMERA, "Diamond Wall");
-                GlassNetworkManager.syncAll(s);
-            });
 
-            //The screen: a 7x5 wall of GLASS facing south, with the projector in it, showing the gold camera.
+            //Channels: unique names, passwords, one camera each.
+            String[] ids = server.computeOnServer(s -> {
+                ServerPlayer p = player(s);
+                String gold = create(s, GOLD_CAMERA, "Gold Net", "goldpass");
+                check(!GlassNetworkManager.createChannel(p, terminal(s, SPARE_TERMINAL), "gold net", "other1").ok(), "existing channel name refused (any case)");
+                String diamond = create(s, DIAMOND_CAMERA, "Diamond Net", "diamond1");
+                GlassNetworkData data = GlassNetworkManager.data(s);
+                check(!data.channels.get(gold).hash.contains("goldpass"), "password stored hashed");
+                check(data.channels.get(gold).owner.equals(p.getUUID()) && data.channels.get(gold).ownerName.equals(p.getGameProfile().getName()), "owner stored by UUID and name");
+
+                //One camera per channel: moving it to another terminal unlinks the old one.
+                check(GlassNetworkManager.moveCamera(p, terminal(s, SPARE_TERMINAL), diamond).ok(), "camera moved to another terminal");
+                check(!terminal(s, DIAMOND_CAMERA).isLinked() && terminal(s, SPARE_TERMINAL).channelId.equals(diamond), "old terminal unlinked, new one linked");
+                check(GlassNetworkManager.moveCamera(p, terminal(s, DIAMOND_CAMERA), diamond).ok(), "camera moved back");
+                check(!terminal(s, SPARE_TERMINAL).isLinked(), "spare terminal unlinked again");
+
+                //Another player's channel: needs the password, which is checked and rate-limited.
+                UUID stranger = UUID.randomUUID();
+                PasswordHasher.Hash hash = PasswordHasher.hash("letmein");
+                GlassNetworkData.Channel secret = new GlassNetworkData.Channel("5ec12e70", "Secret Net", stranger, "Someone", hash.salt(), hash.hash(), hash.iterations(), List.of(), Optional.empty());
+                data.channels.put(secret.id, secret);
+                check(!secret.hasAccess(p.getUUID()), "no access without the password");
+                check(!GlassNetworkManager.unlock(p, secret.id, "nope").ok(), "wrong password refused");
+                check(!GlassNetworkManager.deleteChannel(p, secret.id).ok(), "only the owner can delete");
+                check(!GlassNetworkManager.changePassword(p, secret.id, "mine1234").ok(), "only the owner can change the password");
+                check(GlassNetworkManager.unlock(p, secret.id, "letmein").ok() && secret.hasAccess(p.getUUID()), "right password gives access");
+                GlassNetworkData.Channel other = new GlassNetworkData.Channel("0717e200", "Other Net", stranger, "Someone", hash.salt(), hash.hash(), hash.iterations(), List.of(), Optional.empty());
+                data.channels.put(other.id, other);
+                for(int i = 0; i < 6; i++)
+                {
+                    GlassNetworkManager.unlock(p, other.id, "wrong");
+                }
+                check(!GlassNetworkManager.unlock(p, other.id, "letmein").ok(), "too many wrong passwords: locked out for a minute");
+                check(GlassNetworkManager.changePassword(p, gold, "goldpass2").ok(), "owner changed the password");
+                GlassNetworkManager.syncAll(s);
+                return new String[] { gold, diamond };
+            });
+            String goldId = ids[0];
+            String diamondId = ids[1];
+
+            //The screen: a 7x5 wall of GLASS facing south, with the projector in it, showing the gold channel.
             server.runCommand("fill -3 -60 0 3 -56 0 generallaymansaestheticspyingscreen:glass_extension");
             server.runCommand("setblock 0 -58 0 generallaymansaestheticspyingscreen:glass_projector{placingFace:\"south\"}");
             context.waitTicks(2);
-            server.runOnServer(s -> tune(s, PROJECTOR, channelId, cameraId(s, GOLD_CAMERA), false, 10));
+            server.runOnServer(s -> tune(s, PROJECTOR, goldId));
             context.waitTicks(5);
 
-            //Watch the screen turn on (no black frames).
             server.runCommand("tp @p 0.5 -60 8.5 180 0");
             singleplayer.getClientWorld().waitForChunksRender();
             context.waitTicks(10);
             server.runCommand("setblock 0 -58 -1 minecraft:redstone_block");
-            int waited = 0;
-            for(int tick : new int[] { 2, 5, 12 })
-            {
-                context.waitTicks(tick - waited);
-                waited = tick;
-                context.takeScreenshot("turn_on_tick_" + (tick < 10 ? "0" : "") + tick);
-            }
+            context.waitTicks(3);
+            context.takeScreenshot("turn_on");
             context.waitTicks(60);
             check(server.computeOnServer(GlassClientGameTest::countActive) == 35, "all 35 GLASS blocks turned on");
-            context.takeScreenshot("screen_gold_camera");
+            context.takeScreenshot("screen_gold");
 
-            //Auto-cycle between both cameras every 3 seconds.
-            server.runOnServer(s -> tune(s, PROJECTOR, channelId, "", true, 3));
-            context.waitTicks(5);
-            context.takeScreenshot("cycle_1");
-            context.waitTicks(65);
-            context.takeScreenshot("cycle_2");
-
-            //A wireless screen showing the diamond camera.
+            //A wireless screen showing the diamond channel.
             server.runCommand("setblock -16 -55 6 generallaymansaestheticspyingscreen:glass_wireless_extension");
             server.runCommand("setblock -12 -55 6 generallaymansaestheticspyingscreen:glass_wireless_extension");
             server.runCommand("setblock -16 -58 6 generallaymansaestheticspyingscreen:glass_wireless_extension");
             server.runCommand("setblock -12 -58 6 generallaymansaestheticspyingscreen:glass_wireless_extension");
             server.runCommand("setblock -14 -59 6 generallaymansaestheticspyingscreen:glass_projector{placingFace:\"south\",wirelessPos:[[I;-16,-55,6],[I;-12,-55,6],[I;-16,-58,6],[I;-12,-58,6]]}");
             context.waitTicks(2);
-            server.runOnServer(s -> tune(s, WIRELESS_PROJECTOR, channelId, cameraId(s, DIAMOND_CAMERA), false, 10));
+            server.runOnServer(s -> tune(s, WIRELESS_PROJECTOR, diamondId));
             server.runCommand("setblock -14 -59 5 minecraft:redstone_block");
             context.waitTicks(40);
             server.runCommand("tp @p -13.5 -60 14.5 180 -10");
@@ -216,10 +204,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("setblock 23 -60 30 generallaymansaestheticspyingscreen:glass_projector{placingFace:\"south\"}");
             server.runCommand("setblock 23 -60 31 generallaymansaestheticspyingscreen:glass_terminal{facing:\"north\"}");
             context.waitTicks(2);
-            server.runOnServer(s -> {
-                linkCamera(s, channelId, WINDOW_CAMERA, "Window");
-                tune(s, WINDOW_PROJECTOR, channelId, cameraId(s, WINDOW_CAMERA), false, 10);
-            });
+            server.runOnServer(s -> tune(s, WINDOW_PROJECTOR, create(s, WINDOW_CAMERA, "Window", "window1")));
             server.runCommand("setblock 23 -60 29 minecraft:redstone_block");
             context.runOnClient(mc -> mc.options.bobView().set(true));
             server.runCommand("tp @p 23.5 -60 44.5 180 0");
@@ -231,32 +216,34 @@ public class GlassClientGameTest implements FabricClientGameTest
             context.getInput().releaseKey(options -> options.keyUp);
             context.waitTicks(10);
 
-            //The screens (the client has the network state by now).
-            GlassTerminalBlockEntity terminal = context.computeOnClient(mc -> (GlassTerminalBlockEntity)mc.level.getBlockEntity(GOLD_CAMERA));
+            //The screens.
+            GlassTerminalBlockEntity spare = context.computeOnClient(mc -> (GlassTerminalBlockEntity)mc.level.getBlockEntity(SPARE_TERMINAL));
+            GlassTerminalBlockEntity gold = context.computeOnClient(mc -> (GlassTerminalBlockEntity)mc.level.getBlockEntity(GOLD_CAMERA));
             GlassProjectorBlockEntity projector = context.computeOnClient(mc -> (GlassProjectorBlockEntity)mc.level.getBlockEntity(PROJECTOR));
             GlassProjectorBlockEntity wirelessProjector = context.computeOnClient(mc -> (GlassProjectorBlockEntity)mc.level.getBlockEntity(WIRELESS_PROJECTOR));
-            context.setScreen(() -> new CameraScreen(terminal));
+            context.setScreen(() -> new CameraScreen(spare));
             context.waitTicks(10);
-            context.takeScreenshot("gui_camera");
+            context.takeScreenshot("gui_camera_new");
+            context.setScreen(() -> new CameraScreen(gold));
+            context.waitTicks(10);
+            context.takeScreenshot("gui_camera_owner");
             context.setScreen(() -> new ProjectorScreen(projector));
             context.waitTicks(10);
             context.takeScreenshot("gui_projector");
-            context.setScreen(() -> new NetworkScreen(null));
-            context.waitTicks(10);
-            context.takeScreenshot("gui_network");
             context.setScreen(() -> new WirelessOrderScreen(wirelessProjector, null));
             context.waitTicks(10);
             context.takeScreenshot("gui_wireless_order");
             context.setScreen(() -> null);
 
-            //Breaking a camera takes it off the channel: normally at once, and within a second even when the removal
-            //skips block entity side effects (as /setblock does).
+            //Removing a camera terminal takes the channel's camera offline: at once when broken, and within a second even
+            //when the removal skips block entity side effects (as /setblock does).
             server.runCommand("setblock 80 -59 0 minecraft:air");
             context.waitTicks(30);
-            check(server.computeOnServer(s -> GlassNetworkManager.data(s).channels.get(channelId).cameras.size()) == 2, "removed camera taken off the channel");
+            check(server.computeOnServer(s -> GlassNetworkManager.data(s).channels.get(diamondId).camera == null), "removed terminal: channel camera offline");
             server.runCommand("setblock 40 -59 0 minecraft:air destroy");
             context.waitTicks(2);
-            check(server.computeOnServer(s -> GlassNetworkManager.data(s).channels.get(channelId).cameras.size()) == 1, "broken camera taken off the channel at once");
+            check(server.computeOnServer(s -> GlassNetworkManager.data(s).channels.get(goldId).camera == null), "broken terminal: channel camera offline at once");
+            check(server.computeOnServer(s -> GlassNetworkManager.data(s).channels.containsKey(goldId)), "the channel itself stays");
 
             //Turning the projector off turns the whole screen off again.
             server.runCommand("setblock 0 -58 -1 minecraft:air");

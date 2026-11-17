@@ -5,12 +5,11 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 import ryzlar.glass.client.GlassNetClient;
-import ryzlar.glass.client.gui.LoginScreen;
 import ryzlar.glass.network.GlassNetworking;
 
 /**
- * Base for the GLASS screens: a centred holographic panel that "opens" when shown, a header with the logged-in
- * operator, the server's last reply at the bottom, and a refresh whenever the network state changes.
+ * Base for the GLASS screens: a centred holographic panel that "opens" when shown, a header, the server's last reply
+ * at the bottom, and a refresh whenever the channel list changes.
  */
 public abstract class HoloScreen extends Screen
 {
@@ -43,13 +42,8 @@ public abstract class HoloScreen extends Screen
             GlassNetClient.clearResult();
         }
         seenVersion = GlassNetClient.version();
+        GlassNetClient.send(GlassNetworking.Action.REQUEST_STATE);
         build();
-        if(requiresLogin())
-        {
-            HoloButton logout = new HoloButton(left + panelW - 74, top + 5, 52, 12, Component.translatable("glass.ui.logout"),
-                    b -> GlassNetClient.send(GlassNetworking.Action.LOGOUT));
-            addRenderableWidget(logout);
-        }
         refresh();
     }
 
@@ -60,12 +54,6 @@ public abstract class HoloScreen extends Screen
     protected void refresh() {}
 
     protected abstract Component subtitle();
-
-    /** Screens that change the network need a logged-in GLASS account; logging out sends you back to the login screen. */
-    protected boolean requiresLogin()
-    {
-        return true;
-    }
 
     /** Enter key. */
     protected void onEnter() {}
@@ -80,11 +68,6 @@ public abstract class HoloScreen extends Screen
     public void tick()
     {
         super.tick();
-        if(requiresLogin() && !GlassNetClient.loggedIn())
-        {
-            minecraft.setScreen(new LoginScreen(() -> this));
-            return;
-        }
         if(seenVersion != GlassNetClient.version())
         {
             seenVersion = GlassNetClient.version();
@@ -139,11 +122,6 @@ public abstract class HoloScreen extends Screen
         }
         super.render(g, mouseX, mouseY, partialTick);
         Holo.header(g, font, left, top, panelW, title, subtitle());
-        if(requiresLogin() && GlassNetClient.loggedIn())
-        {
-            Component operator = Component.translatable("glass.ui.operator", GlassNetClient.account());
-            g.drawString(font, operator, left + panelW - 78 - font.width(operator), top + 8, Holo.MUTED, false);
-        }
         GlassNetworking.ActionResult result = GlassNetClient.recentResult(RESULT_SHOW_MILLIS);
         if(localMessage != null)
         {

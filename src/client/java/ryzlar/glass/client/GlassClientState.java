@@ -9,7 +9,6 @@ import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.blockentity.GlassWirelessBlockEntity;
 import ryzlar.glass.client.gui.CameraScreen;
-import ryzlar.glass.client.gui.LoginScreen;
 import ryzlar.glass.client.gui.ProjectorScreen;
 import ryzlar.glass.client.gui.WirelessProjectorScreen;
 import ryzlar.glass.client.render.SpyViewRenderer;
@@ -77,13 +76,13 @@ public final class GlassClientState implements GlassClientBridge
     @Override
     public void openTerminalScreen(GlassTerminalBlockEntity terminal)
     {
-        Minecraft.getInstance().setScreen(LoginScreen.gate(() -> new CameraScreen(terminal)));
+        Minecraft.getInstance().setScreen(new CameraScreen(terminal));
     }
 
     @Override
     public void openProjectorScreen(GlassProjectorBlockEntity projector)
     {
-        Minecraft.getInstance().setScreen(LoginScreen.gate(() -> new ProjectorScreen(projector)));
+        Minecraft.getInstance().setScreen(new ProjectorScreen(projector));
     }
 
     @Override

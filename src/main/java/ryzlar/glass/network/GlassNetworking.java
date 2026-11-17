@@ -6,24 +6,22 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import ryzlar.glass.GlassConfig;
+import ryzlar.glass.Glass;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.blockentity.GlassWirelessBlockEntity;
-import ryzlar.glass.Glass;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Packets between the GLASS screens and the server. The server owns all network data; the client only gets the part
- * the logged-in account may see ({@link NetworkState}) and a short reply to each action ({@link ActionResult}).
+ * Packets between the GLASS screens and the server. The server owns the channels; clients get every channel's public
+ * details ({@link NetworkState}) and a short reply to each action ({@link ActionResult}).
  */
 public final class GlassNetworking
 {
@@ -34,36 +32,24 @@ public final class GlassNetworking
 
     // ---- Server to client ----
 
-    public record CameraInfo(String id, String name, String dimension, BlockPos pos, Direction facing)
-    {
-        public static final StreamCodec<ByteBuf, CameraInfo> CODEC = StreamCodec.composite(
-                SHORT_STRING, CameraInfo::id,
-                SHORT_STRING, CameraInfo::name,
-                SHORT_STRING, CameraInfo::dimension,
-                BlockPos.STREAM_CODEC, CameraInfo::pos,
-                Direction.STREAM_CODEC, CameraInfo::facing,
-                CameraInfo::new);
-    }
-
-    public record ChannelInfo(String id, String name, String ownerName, boolean owner, List<String> members, List<CameraInfo> cameras)
+    /** A channel as players see it: no password, just whether you own it, may use it, and whether its camera is up. */
+    public record ChannelInfo(String id, String name, String ownerName, boolean owner, boolean access, boolean online)
     {
         public static final StreamCodec<ByteBuf, ChannelInfo> CODEC = StreamCodec.composite(
                 SHORT_STRING, ChannelInfo::id,
                 SHORT_STRING, ChannelInfo::name,
                 SHORT_STRING, ChannelInfo::ownerName,
                 ByteBufCodecs.BOOL, ChannelInfo::owner,
-                SHORT_STRING.apply(ByteBufCodecs.list(1024)), ChannelInfo::members,
-                CameraInfo.CODEC.apply(ByteBufCodecs.list(1024)), ChannelInfo::cameras,
+                ByteBufCodecs.BOOL, ChannelInfo::access,
+                ByteBufCodecs.BOOL, ChannelInfo::online,
                 ChannelInfo::new);
     }
 
-    /** What the player's GLASS account can see. An empty account name means not logged in. */
-    public record NetworkState(String account, List<ChannelInfo> channels) implements CustomPacketPayload
+    public record NetworkState(List<ChannelInfo> channels) implements CustomPacketPayload
     {
         public static final Type<NetworkState> TYPE = new Type<>(Glass.id("network_state"));
         public static final StreamCodec<ByteBuf, NetworkState> CODEC = StreamCodec.composite(
-                SHORT_STRING, NetworkState::account,
-                ChannelInfo.CODEC.apply(ByteBufCodecs.list(4096)), NetworkState::channels,
+                ChannelInfo.CODEC.apply(ByteBufCodecs.list(65536)), NetworkState::channels,
                 NetworkState::new);
 
         @Override
@@ -95,16 +81,9 @@ public final class GlassNetworking
     public enum Action
     {
         REQUEST_STATE(0),
-        REGISTER(3),       //username, password, remember (1/0)
-        LOGIN(3),          //username, password, remember (1/0)
-        LOGOUT(0),
-        CREATE_CHANNEL(2), //name, password
-        JOIN_CHANNEL(2),   //name, password
-        LEAVE_CHANNEL(1),  //channel id
-        DELETE_CHANNEL(1), //channel id
-        CHANGE_PASSWORD(2),//channel id, new password
-        KICK_MEMBER(2),    //channel id, account name
-        REMOVE_CAMERA(2);  //channel id, camera id
+        UNLOCK(2),          //channel id, password
+        DELETE_CHANNEL(1),  //channel id
+        CHANGE_PASSWORD(2); //channel id, new password
 
         final int args;
 
@@ -114,7 +93,7 @@ public final class GlassNetworking
         }
     }
 
-    /** An account or channel command. Arguments are plain strings; see {@link Action}. */
+    /** A channel command. */
     public record NetAction(int action, List<String> args) implements CustomPacketPayload
     {
         public static final Type<NetAction> TYPE = new Type<>(Glass.id("net_action"));
@@ -135,15 +114,27 @@ public final class GlassNetworking
         }
     }
 
-    /** Puts a terminal's camera on a channel under a name. An empty channel id takes it off. */
-    public record LinkCamera(BlockPos pos, String channelId, String name) implements CustomPacketPayload
+    public enum TerminalCommand
     {
-        public static final Type<LinkCamera> TYPE = new Type<>(Glass.id("link_camera"));
-        public static final StreamCodec<ByteBuf, LinkCamera> CODEC = StreamCodec.composite(
-                BlockPos.STREAM_CODEC, LinkCamera::pos,
-                SHORT_STRING, LinkCamera::channelId,
-                SHORT_STRING, LinkCamera::name,
-                LinkCamera::new);
+        CREATE,    //name, password: a new channel with this terminal as its camera
+        MOVE_HERE, //channel id: make this terminal the camera of one of your channels
+        DETACH     //this terminal stops being a camera
+    }
+
+    public record TerminalAction(BlockPos pos, int command, String a, String b) implements CustomPacketPayload
+    {
+        public static final Type<TerminalAction> TYPE = new Type<>(Glass.id("terminal_action"));
+        public static final StreamCodec<ByteBuf, TerminalAction> CODEC = StreamCodec.composite(
+                BlockPos.STREAM_CODEC, TerminalAction::pos,
+                ByteBufCodecs.VAR_INT, TerminalAction::command,
+                SHORT_STRING, TerminalAction::a,
+                SHORT_STRING, TerminalAction::b,
+                TerminalAction::new);
+
+        public static TerminalAction of(BlockPos pos, TerminalCommand command, String a, String b)
+        {
+            return new TerminalAction(pos, command.ordinal(), a, b);
+        }
 
         @Override
         public Type<? extends CustomPacketPayload> type()
@@ -152,16 +143,13 @@ public final class GlassNetworking
         }
     }
 
-    /** Sets what a projector shows: a channel and one camera, or all of its cameras in turn. */
-    public record ConfigureProjector(BlockPos pos, String channelId, String cameraId, boolean cycle, int cycleSeconds) implements CustomPacketPayload
+    /** Sets which channel a projector shows (empty: none). */
+    public record ConfigureProjector(BlockPos pos, String channelId) implements CustomPacketPayload
     {
         public static final Type<ConfigureProjector> TYPE = new Type<>(Glass.id("configure_projector"));
         public static final StreamCodec<ByteBuf, ConfigureProjector> CODEC = StreamCodec.composite(
                 BlockPos.STREAM_CODEC, ConfigureProjector::pos,
                 SHORT_STRING, ConfigureProjector::channelId,
-                SHORT_STRING, ConfigureProjector::cameraId,
-                ByteBufCodecs.BOOL, ConfigureProjector::cycle,
-                ByteBufCodecs.VAR_INT, ConfigureProjector::cycleSeconds,
                 ConfigureProjector::new);
 
         @Override
@@ -208,13 +196,13 @@ public final class GlassNetworking
         PayloadTypeRegistry.playS2C().register(NetworkState.TYPE, NetworkState.CODEC);
         PayloadTypeRegistry.playS2C().register(ActionResult.TYPE, ActionResult.CODEC);
         PayloadTypeRegistry.playC2S().register(NetAction.TYPE, NetAction.CODEC);
-        PayloadTypeRegistry.playC2S().register(LinkCamera.TYPE, LinkCamera.CODEC);
+        PayloadTypeRegistry.playC2S().register(TerminalAction.TYPE, TerminalAction.CODEC);
         PayloadTypeRegistry.playC2S().register(ConfigureProjector.TYPE, ConfigureProjector.CODEC);
         PayloadTypeRegistry.playC2S().register(SetProjector.TYPE, SetProjector.CODEC);
         PayloadTypeRegistry.playC2S().register(WirelessOrder.TYPE, WirelessOrder.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(NetAction.TYPE, (payload, context) -> handleAction(context.player(), payload));
-        ServerPlayNetworking.registerGlobalReceiver(LinkCamera.TYPE, (payload, context) -> handleLinkCamera(context.player(), payload));
+        ServerPlayNetworking.registerGlobalReceiver(TerminalAction.TYPE, (payload, context) -> handleTerminal(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(ConfigureProjector.TYPE, (payload, context) -> handleConfigureProjector(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(SetProjector.TYPE, (payload, context) -> handleSetProjector(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(WirelessOrder.TYPE, (payload, context) -> handleWirelessOrder(context.player(), payload));
@@ -227,6 +215,10 @@ public final class GlassNetworking
     private static void reply(ServerPlayer player, GlassNetworkManager.Result result)
     {
         ServerPlayNetworking.send(player, new ActionResult(result.ok(), result.message(), result.arg()));
+        if(result.ok())
+        {
+            GlassNetworkManager.syncAll(player.level().getServer());
+        }
     }
 
     private static boolean canReach(ServerPlayer player, BlockPos pos)
@@ -246,80 +238,29 @@ public final class GlassNetworking
         {
             return;
         }
-        GlassNetworkManager.Result result = switch(action)
+        switch(action)
         {
-            case REQUEST_STATE -> null;
-            case REGISTER -> GlassNetworkManager.register(player, a.get(0), a.get(1), a.get(2).equals("1"));
-            case LOGIN -> GlassNetworkManager.login(player, a.get(0), a.get(1), a.get(2).equals("1"));
-            case LOGOUT -> GlassNetworkManager.logout(player);
-            case CREATE_CHANNEL -> GlassNetworkManager.createChannel(player, a.get(0), a.get(1));
-            case JOIN_CHANNEL -> GlassNetworkManager.joinChannel(player, a.get(0), a.get(1));
-            case LEAVE_CHANNEL -> GlassNetworkManager.leaveChannel(player, a.get(0));
-            case DELETE_CHANNEL -> GlassNetworkManager.deleteChannel(player, a.get(0));
-            case CHANGE_PASSWORD -> GlassNetworkManager.changeChannelPassword(player, a.get(0), a.get(1));
-            case KICK_MEMBER -> GlassNetworkManager.kickMember(player, a.get(0), a.get(1));
-            case REMOVE_CAMERA -> GlassNetworkManager.removeCamera(player, a.get(0), a.get(1));
-        };
-        if(result == null)
-        {
-            GlassNetworkManager.sendState(player);
-            return;
-        }
-        reply(player, result);
-        if(result.ok())
-        {
-            GlassNetworkManager.syncAll(player.level().getServer());
+            case REQUEST_STATE -> GlassNetworkManager.sendState(player);
+            case UNLOCK -> reply(player, GlassNetworkManager.unlock(player, a.get(0), a.get(1)));
+            case DELETE_CHANNEL -> reply(player, GlassNetworkManager.deleteChannel(player, a.get(0)));
+            case CHANGE_PASSWORD -> reply(player, GlassNetworkManager.changePassword(player, a.get(0), a.get(1)));
         }
     }
 
-    /** May this player change a block that is on {@code channelId}? Yes if it has none, it no longer exists, or they are a member. */
-    private static boolean mayEdit(ServerPlayer player, String channelId)
-    {
-        if(channelId.isEmpty())
-        {
-            return true;
-        }
-        GlassNetworkData.Channel channel = GlassNetworkManager.data(player.level().getServer()).channels.get(channelId);
-        return channel == null || channel.isMember(GlassNetworkManager.account(player));
-    }
-
-    private static void handleLinkCamera(ServerPlayer player, LinkCamera payload)
+    private static void handleTerminal(ServerPlayer player, TerminalAction payload)
     {
         ServerLevel level = player.level();
-        if(!canReach(player, payload.pos()) || !(level.getBlockEntity(payload.pos()) instanceof GlassTerminalBlockEntity terminal))
+        if(payload.command() < 0 || payload.command() >= TerminalCommand.values().length
+                || !canReach(player, payload.pos()) || !(level.getBlockEntity(payload.pos()) instanceof GlassTerminalBlockEntity terminal))
         {
             return;
         }
-        if(GlassNetworkManager.account(player) == null)
+        reply(player, switch(TerminalCommand.values()[payload.command()])
         {
-            reply(player, new GlassNetworkManager.Result(false, "glass.msg.notLoggedIn", ""));
-            return;
-        }
-        if(!mayEdit(player, terminal.channelId))
-        {
-            reply(player, new GlassNetworkManager.Result(false, "glass.msg.noAccess", ""));
-            return;
-        }
-        if(payload.channelId().isEmpty())
-        {
-            terminal.unlink(level.getServer());
-            reply(player, new GlassNetworkManager.Result(true, "glass.msg.cameraUnlinked", ""));
-        }
-        else
-        {
-            GlassNetworkManager.Result result = GlassNetworkManager.linkCamera(player, payload.channelId(), terminal.cameraId.isEmpty() ? null : terminal.cameraId,
-                    terminal.channelId.isEmpty() ? null : terminal.channelId, payload.name(), level.dimension(), terminal.getBlockPos(), terminal.facing);
-            if(result.ok())
-            {
-                terminal.channelId = payload.channelId();
-                terminal.cameraId = result.arg();
-                terminal.cameraName = payload.name().trim();
-                terminal.sync();
-                result = new GlassNetworkManager.Result(true, "glass.msg.cameraLinked", terminal.cameraName);
-            }
-            reply(player, result);
-        }
-        GlassNetworkManager.syncAll(level.getServer());
+            case CREATE -> GlassNetworkManager.createChannel(player, terminal, payload.a(), payload.b());
+            case MOVE_HERE -> GlassNetworkManager.moveCamera(player, terminal, payload.a());
+            case DETACH -> GlassNetworkManager.detachCamera(player, terminal);
+        });
     }
 
     private static void handleConfigureProjector(ServerPlayer player, ConfigureProjector payload)
@@ -329,36 +270,22 @@ public final class GlassNetworking
         {
             return;
         }
-        if(GlassNetworkManager.account(player) == null)
-        {
-            reply(player, new GlassNetworkManager.Result(false, "glass.msg.notLoggedIn", ""));
-            return;
-        }
-        if(!mayEdit(player, projector.channelId) || !mayEdit(player, payload.channelId()))
-        {
-            reply(player, new GlassNetworkManager.Result(false, "glass.msg.noAccess", ""));
-            return;
-        }
         GlassNetworkData data = GlassNetworkManager.data(level.getServer());
         GlassNetworkData.Channel channel = data.channels.get(payload.channelId());
-        if(!payload.channelId().isEmpty() && channel == null)
+        if(!payload.channelId().isEmpty() && (channel == null || !channel.hasAccess(player.getUUID())))
         {
-            reply(player, new GlassNetworkManager.Result(false, "glass.msg.noAccess", ""));
+            reply(player, GlassNetworkManager.Result.fail("glass.msg.noAccess"));
             return;
         }
         if(projector.active && !payload.channelId().equals(projector.channelId))
         {
-            reply(player, new GlassNetworkManager.Result(false, "glass.msg.powerDown", ""));
+            reply(player, GlassNetworkManager.Result.fail("glass.msg.powerDown"));
             return;
         }
         projector.channelId = payload.channelId();
         projector.channelName = channel == null ? "" : channel.name;
-        projector.cameraId = payload.cameraId();
-        projector.cycle = payload.cycle();
-        projector.cycleSeconds = Math.max(GlassConfig.get().minCycleSeconds, Math.min(600, payload.cycleSeconds()));
         projector.resolveCamera(data, true);
-        projector.sync();
-        reply(player, new GlassNetworkManager.Result(true, "glass.msg.projectorSet", projector.channelName));
+        reply(player, GlassNetworkManager.Result.ok("glass.msg.projectorSet", projector.channelName));
     }
 
     private static void handleSetProjector(ServerPlayer player, SetProjector payload)
@@ -372,12 +299,11 @@ public final class GlassNetworking
                 && level.getBlockEntity(payload.projectorPos()) instanceof GlassProjectorBlockEntity projector
                 && !projector.active
                 && !projector.wirelessPos.contains(payload.wirelessPos())
-                && projector.wirelessPos.size() < GlassProjectorBlockEntity.MAX_WIRELESS
-                && mayEdit(player, projector.channelId))
+                && projector.wirelessPos.size() < GlassProjectorBlockEntity.MAX_WIRELESS)
         {
             projector.wirelessPos.add(payload.wirelessPos());
             projector.sync();
-            reply(player, new GlassNetworkManager.Result(true, "glass.msg.wirelessLinked", ""));
+            reply(player, GlassNetworkManager.Result.ok("glass.msg.wirelessLinked", ""));
         }
     }
 
@@ -388,7 +314,7 @@ public final class GlassNetworking
         {
             return;
         }
-        if(level.getBlockEntity(payload.projectorPos()) instanceof GlassProjectorBlockEntity projector && !projector.active && mayEdit(player, projector.channelId))
+        if(level.getBlockEntity(payload.projectorPos()) instanceof GlassProjectorBlockEntity projector && !projector.active)
         {
             //The screen only lets you reorder or remove extensions, so only accept positions the projector already has.
             List<BlockPos> order = new ArrayList<>();
@@ -401,7 +327,7 @@ public final class GlassNetworking
             }
             projector.wirelessPos = order;
             projector.sync();
-            reply(player, new GlassNetworkManager.Result(true, "glass.msg.wirelessOrdered", ""));
+            reply(player, GlassNetworkManager.Result.ok("glass.msg.wirelessOrdered", ""));
         }
     }
 }
