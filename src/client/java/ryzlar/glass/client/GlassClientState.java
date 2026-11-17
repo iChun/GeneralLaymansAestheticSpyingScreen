@@ -8,8 +8,9 @@ import ryzlar.glass.blockentity.GlassBaseBlockEntity;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.blockentity.GlassWirelessBlockEntity;
-import ryzlar.glass.client.gui.ChannelSetterScreen;
-import ryzlar.glass.client.gui.ProjectorChannelScreen;
+import ryzlar.glass.client.gui.CameraScreen;
+import ryzlar.glass.client.gui.LoginScreen;
+import ryzlar.glass.client.gui.ProjectorScreen;
 import ryzlar.glass.client.gui.WirelessProjectorScreen;
 import ryzlar.glass.client.render.SpyViewRenderer;
 
@@ -18,14 +19,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
- * Client-side bookkeeping: which terminal and which glass blocks belong to each channel. Port of EventHandlerClient.
+ * Client-side bookkeeping: which glass blocks belong to each screen, and the terminal placement (camera view) of each
+ * screen. Port of EventHandlerClient. Screens are keyed by their projector ({@link GlassProjectorBlockEntity#screenKey()}).
  * <p>
  * In 1.12 block entities registered themselves in onLoad / onChunkUnload / onDataPacket. Here each block entity reports
  * its current channel every client tick ({@link #syncGlass}) and this class works out what changed.
@@ -36,8 +36,6 @@ public final class GlassClientState implements GlassClientBridge
 
     public BlockPos clickedPos = null;
 
-    /** Channel name to the terminal currently using it. */
-    public final Map<String, GlassTerminalBlockEntity> terminalLocations = new HashMap<>();
     /** Channel name to the active glass on it. A block can be counted twice (wireless extensions used by a projector). */
     private final Map<String, Map<GlassBaseBlockEntity, Integer>> activeGlass = new HashMap<>();
     public final Map<String, TerminalPlacement> terminalPlacements = new HashMap<>();
@@ -50,7 +48,6 @@ public final class GlassClientState implements GlassClientBridge
     private static final int PREWARM_TICKS = 40;
 
     private final Map<GlassBaseBlockEntity, Registration> glassRegistrations = new IdentityHashMap<>();
-    private final Map<GlassTerminalBlockEntity, String> terminalRegistrations = new IdentityHashMap<>();
 
     private record Registration(String channel, List<GlassWirelessBlockEntity> wireless)
     {
@@ -80,13 +77,13 @@ public final class GlassClientState implements GlassClientBridge
     @Override
     public void openTerminalScreen(GlassTerminalBlockEntity terminal)
     {
-        Minecraft.getInstance().setScreen(new ChannelSetterScreen(terminal));
+        Minecraft.getInstance().setScreen(LoginScreen.gate(() -> new CameraScreen(terminal)));
     }
 
     @Override
     public void openProjectorScreen(GlassProjectorBlockEntity projector)
     {
-        Minecraft.getInstance().setScreen(new ProjectorChannelScreen(projector));
+        Minecraft.getInstance().setScreen(LoginScreen.gate(() -> new ProjectorScreen(projector)));
     }
 
     @Override
@@ -129,38 +126,6 @@ public final class GlassClientState implements GlassClientBridge
             loadedProjectors.remove(projector);
         }
         unregister(glass, glassRegistrations.getOrDefault(glass, Registration.NONE));
-    }
-
-    @Override
-    public void syncTerminal(GlassTerminalBlockEntity terminal)
-    {
-        String current = terminalRegistrations.getOrDefault(terminal, "");
-        if(current.equals(terminal.channelName))
-        {
-            return;
-        }
-        removeTerminal(terminal);
-        if(!terminal.channelName.isEmpty())
-        {
-            terminalRegistrations.put(terminal, terminal.channelName);
-            GlassTerminalBlockEntity previous = terminalLocations.put(terminal.channelName, terminal);
-            if(previous != terminal)
-            {
-                releasePlacement(terminal.channelName);
-            }
-            channelChanged(terminal.channelName);
-        }
-    }
-
-    @Override
-    public void removeTerminal(GlassTerminalBlockEntity terminal)
-    {
-        String channel = terminalRegistrations.remove(terminal);
-        if(channel != null && terminalLocations.get(channel) == terminal)
-        {
-            terminalLocations.remove(channel);
-            releasePlacement(channel);
-        }
     }
 
     private static Registration wantedRegistration(GlassBaseBlockEntity glass)
@@ -284,55 +249,58 @@ public final class GlassClientState implements GlassClientBridge
             return null;
         }
         TerminalPlacement existing = terminalPlacements.get(channel);
+        boolean switchedCamera = false;
         if(existing != null)
         {
             if(existing.isValid())
             {
                 return existing;
             }
-            releasePlacement(channel);
+            if(existing.isSameScreen())
+            {
+                //Same projector, other camera (cycling or reconfigured): keep the view, just move it.
+                terminalPlacements.remove(channel);
+                switchedCamera = true;
+            }
+            else
+            {
+                releasePlacement(channel);
+            }
         }
 
-        GlassTerminalBlockEntity terminal = terminalLocations.get(channel);
-        if(terminal != null && !terminal.isRemoved())
+        //Find the projector that started this screen; it knows which camera to show.
+        GlassProjectorBlockEntity master = null;
+        for(GlassBaseBlockEntity base : getActiveGlass(channel))
         {
-            //we have the terminal. now find the projector
-            GlassProjectorBlockEntity master = null;
-            for(GlassBaseBlockEntity base : getActiveGlass(channel))
+            if(base.active && base.distance == 1 && base.channel.equals(channel) && base instanceof GlassProjectorBlockEntity projector && !projector.isRemoved())
             {
-                if(base.active && base.distance == 1 && base.channel.equalsIgnoreCase(channel) && base instanceof GlassProjectorBlockEntity projector && !projector.isRemoved())
-                {
-                    master = projector;
-                    break;
-                }
+                master = projector;
+                break;
             }
-
-            if(master != null) //we have the projector. Now generate the terminal placement
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if(master != null && master.camValid && mc.level != null && master.camDimension.equals(mc.level.dimension()))
+        {
+            TerminalPlacement placement = new TerminalPlacement(channel, master);
+            terminalPlacements.put(channel, placement);
+            if(switchedCamera)
             {
-                TerminalPlacement placement = new TerminalPlacement(channel, master, terminal);
-                terminalPlacements.put(channel, placement);
-                return placement;
+                flash(channel);
             }
+            return placement;
         }
 
         terminalPlacementCreationTimeout.put(channel, 13); //13 tick wait before trying again.
         return null;
     }
 
-    /** Channels the local player may tune a projector to, sorted. */
-    public List<String> availableChannels(String playerName)
+    /** The white flash 1.12 showed when glass turned on, used when a screen switches camera. */
+    private void flash(String channel)
     {
-        Set<String> channels = new LinkedHashSet<>();
-        for(String s : terminalLocations.keySet())
+        for(GlassBaseBlockEntity base : getActiveGlass(channel))
         {
-            if(s.startsWith("public:") || s.startsWith(playerName + ":"))
-            {
-                channels.add(s);
-            }
+            base.fadeoutTime = GlassBaseBlockEntity.FADEOUT_TIME;
         }
-        List<String> sorted = new ArrayList<>(channels);
-        Collections.sort(sorted);
-        return sorted;
     }
 
     public void clientTick(Minecraft mc)
@@ -404,27 +372,18 @@ public final class GlassClientState implements GlassClientBridge
             }
             return false;
         });
-        terminalRegistrations.keySet().removeIf(be -> be.getLevel() != mc.level);
-        terminalLocations.values().removeIf(be -> be.getLevel() != mc.level);
         loadedProjectors.removeIf(be -> be.getLevel() != mc.level);
     }
 
     public void clear()
     {
         clickedPos = null;
-        terminalLocations.clear();
         activeGlass.clear();
         terminalPlacements.clear();
         terminalPlacementCreationTimeout.clear();
         prewarmTicks.clear();
         loadedProjectors.clear();
         glassRegistrations.clear();
-        terminalRegistrations.clear();
         SpyViewRenderer.INSTANCE.releaseAll();
-    }
-
-    public boolean isOwnChannel(String channel, String playerName)
-    {
-        return Objects.equals(channel, "") || channel.startsWith("public:") || channel.startsWith(playerName + ":");
     }
 }

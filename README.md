@@ -46,6 +46,16 @@ What this means for this fork:
   channels or their own, and can only reorder or remove a projector's existing wireless extensions.
 - The wireless order preview in the GUI is drawn as flat lines, because 1.21 GUIs no longer draw in 3D.
 - Added an in-game client test (`src/gametest`).
+- **GLASS//NET channel network** (replaces the old "public / player name" channels):
+  - GLASS accounts with their own username and password (separate from Minecraft accounts), with a login screen
+    and an optional "stay signed in".
+  - Channels anyone can create anywhere, protected by a password. Members are remembered; the owner can change the
+    password (which signs everyone else out of the channel), remove members or cameras, or delete the channel.
+  - Several cameras (terminals) per channel. A projector shows one camera or cycles through all of them.
+  - Passwords are stored salted and hashed (PBKDF2). Failed logins and channel joins are rate-limited.
+  - Server settings in `config/generallaymansaestheticspyingscreen.json` (accounts per player, channels per
+    account, cameras per channel, failed logins per minute, shortest cycle time).
+- New sci-fi style for every GLASS screen.
 
 ## Requirements
 

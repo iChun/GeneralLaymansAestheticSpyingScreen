@@ -94,7 +94,7 @@ public class GlassBlock extends TransparentBlock implements EntityBlock
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult)
     {
         BlockEntity te = level.getBlockEntity(pos);
-        if(te instanceof GlassProjectorBlockEntity projector && !projector.active)
+        if(te instanceof GlassProjectorBlockEntity projector)
         {
             if(level.isClientSide)
             {

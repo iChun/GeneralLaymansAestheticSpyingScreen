@@ -147,7 +147,7 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
 
         if(te instanceof GlassProjectorBlockEntity master)
         {
-            if(!master.wirelessPos.isEmpty() && master.setChannel.equalsIgnoreCase(master.channel))
+            if(!master.wirelessPos.isEmpty() && master.channel.equals(master.screenKey()))
             {
                 if(master.wirelessPos.size() > 1)
                 {

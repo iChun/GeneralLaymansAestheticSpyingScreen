@@ -2,25 +2,52 @@ package ryzlar.glass.blockentity;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
+import org.jetbrains.annotations.Nullable;
 import ryzlar.glass.GlassRegistry;
+import ryzlar.glass.network.GlassNetworkData;
+import ryzlar.glass.network.GlassNetworkManager;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
- * The GLASS projector: the block a channel starts from when it gets a redstone signal. Port of TileEntityGlassMaster.
+ * The GLASS projector: shows a camera of a GLASS channel on the glass connected to it, once it gets a redstone signal.
+ * <p>
+ * The camera it shows (position, dimension, facing) is worked out on the server and sent to clients with the block
+ * entity, so clients do not need the terminal itself.
  */
 public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
 {
     public static final int MAX_WIRELESS = 64;
+    private static final int RESOLVE_INTERVAL = 20;
 
     public boolean powered;
-    public String setChannel = "";
     public Direction placingFace = Direction.NORTH;
     public List<BlockPos> wirelessPos = new ArrayList<>();
+
+    //What to show
+    public String channelId = "";
+    public String channelName = "";
+    public String cameraId = "";
+    public boolean cycle;
+    public int cycleSeconds = 10;
+    private int cycleIndex;
+    private int cycleTimer;
+    private int resolveTimer;
+
+    //The camera being shown, resolved by the server
+    public boolean camValid;
+    public String camName = "";
+    public ResourceKey<Level> camDimension = Level.OVERWORLD;
+    public BlockPos camPos = BlockPos.ZERO;
+    public Direction camFacing = Direction.NORTH;
 
     public float rotationBeacon, rotationBeaconPrev;
     public int wirelessTime;
@@ -30,23 +57,48 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         super(GlassRegistry.GLASS_PROJECTOR_BE, pos, state);
     }
 
+    /** The key the glass of this projector's screen carries (unique per projector, so screens never mix). */
+    public String screenKey()
+    {
+        return channelId.isEmpty() ? "" : channelId + "@" + getBlockPos().asLong();
+    }
+
+    public boolean isShowingOwnScreen()
+    {
+        return active && channel.equals(screenKey());
+    }
+
     /** True when the projector shows its own channel through wireless extensions instead of attached glass. */
     public boolean isWirelessActive()
     {
-        return active && channel.equalsIgnoreCase(setChannel) && !wirelessPos.isEmpty();
+        return isShowingOwnScreen() && !wirelessPos.isEmpty();
     }
 
     @Override
     public void update()
     {
         super.update(); //Glass master is also a glass base. Let it do it's job.
-        float rotationFactor = active && channel.equalsIgnoreCase(setChannel) ? (1.0F - (1.0F * (float)fadeoutTime / FADEOUT_TIME)) : (1.0F * (float)fadeoutTime / FADEOUT_TIME);
+        float rotationFactor = isShowingOwnScreen() ? (1.0F - (1.0F * (float)fadeoutTime / FADEOUT_TIME)) : (1.0F * (float)fadeoutTime / FADEOUT_TIME);
         rotationBeaconPrev = rotationBeacon;
         rotationBeacon += 20F * rotationFactor;
 
-        if(!level.isClientSide && wirelessPos.removeIf(pos -> level.isLoaded(pos) && !(level.getBlockEntity(pos) instanceof GlassWirelessBlockEntity)))
+        if(!level.isClientSide)
         {
-            sync();
+            if(wirelessPos.removeIf(pos -> level.isLoaded(pos) && !(level.getBlockEntity(pos) instanceof GlassWirelessBlockEntity)))
+            {
+                sync();
+            }
+            if(cycle && ++cycleTimer >= cycleSeconds * 20)
+            {
+                cycleTimer = 0;
+                cycleIndex++;
+                resolveCamera(GlassNetworkManager.data(((ServerLevel)level).getServer()), false);
+            }
+            else if(++resolveTimer >= RESOLVE_INTERVAL)
+            {
+                resolveTimer = 0;
+                resolveCamera(GlassNetworkManager.data(((ServerLevel)level).getServer()), false);
+            }
         }
 
         if(isWirelessActive())
@@ -59,28 +111,103 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         }
     }
 
+    /** Server: works out which camera to show from the network, and sends it to clients if it changed. */
+    public void resolveCamera(GlassNetworkData data, boolean forceSync)
+    {
+        boolean changed = forceSync;
+        GlassNetworkData.Channel channel = channelId.isEmpty() ? null : data.channels.get(channelId);
+        if(channel == null && !channelId.isEmpty())
+        {
+            //The channel was deleted.
+            if(active)
+            {
+                turnOff();
+            }
+            channelId = "";
+            channelName = "";
+            cameraId = "";
+            changed = true;
+        }
+        if(channel != null && !channel.name.equals(channelName))
+        {
+            channelName = channel.name;
+            changed = true;
+        }
+
+        if(channel != null && level instanceof ServerLevel serverLevel)
+        {
+            GlassNetworkManager.dropMissingCameras(serverLevel.getServer(), channel);
+        }
+        GlassNetworkData.Camera camera = null;
+        if(channel != null && !channel.cameras.isEmpty())
+        {
+            if(cycle)
+            {
+                List<GlassNetworkData.Camera> cameras = new ArrayList<>(channel.cameras.values());
+                cycleIndex = Math.floorMod(cycleIndex, cameras.size());
+                camera = cameras.get(cycleIndex);
+            }
+            else
+            {
+                camera = channel.cameras.get(cameraId);
+            }
+        }
+        changed |= setCamera(camera);
+        if(changed)
+        {
+            sync();
+        }
+    }
+
+    private boolean setCamera(@Nullable GlassNetworkData.Camera camera)
+    {
+        boolean valid = camera != null;
+        String name = valid ? camera.name() : "";
+        ResourceKey<Level> dimension = valid ? camera.dimension() : Level.OVERWORLD;
+        BlockPos pos = valid ? camera.pos() : BlockPos.ZERO;
+        Direction facing = valid ? camera.facing() : Direction.NORTH;
+        if(valid == camValid && name.equals(camName) && dimension.equals(camDimension) && pos.equals(camPos) && facing == camFacing)
+        {
+            return false;
+        }
+        camValid = valid;
+        camName = name;
+        camDimension = dimension;
+        camPos = pos;
+        camFacing = facing;
+        return true;
+    }
+
     public void changeRedstoneState(boolean newState)
     {
-        if(!setChannel.isEmpty() && (!active || channel.equalsIgnoreCase(setChannel)))
+        if(newState)
         {
-            if(newState)
+            if(!active && !channelId.isEmpty())
             {
                 active = true;
-                channel = setChannel;
+                channel = screenKey();
                 distance = 1;
                 if(!activeFaces.contains(placingFace))
                 {
                     activeFaces.add(placingFace);
                 }
+                fadeoutTime = FADEOUT_TIME;
+                propagateTime = PROPAGATE_TIME;
+                sync();
             }
-            else
-            {
-                active = false;
-            }
-            fadeoutTime = FADEOUT_TIME;
-            propagateTime = PROPAGATE_TIME;
-            sync();
         }
+        else if(active)
+        {
+            turnOff();
+        }
+    }
+
+    private void turnOff()
+    {
+        active = false;
+        fadeoutTime = FADEOUT_TIME;
+        propagateTime = PROPAGATE_TIME;
+        sync();
     }
 
     @Override
@@ -94,9 +221,19 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     {
         super.saveAdditional(output);
         output.putBoolean("powered", powered);
-        output.putString("setChannel", setChannel);
         output.store("placingFace", Direction.CODEC, placingFace);
         output.store("wirelessPos", BlockPos.CODEC.listOf(), List.copyOf(wirelessPos));
+        output.putString("channelId", channelId);
+        output.putString("channelName", channelName);
+        output.putString("cameraId", cameraId);
+        output.putBoolean("cycle", cycle);
+        output.putInt("cycleSeconds", cycleSeconds);
+        output.putInt("cycleIndex", cycleIndex);
+        output.putBoolean("camValid", camValid);
+        output.putString("camName", camName);
+        output.store("camDimension", Level.RESOURCE_KEY_CODEC, camDimension);
+        output.store("camPos", BlockPos.CODEC, camPos);
+        output.store("camFacing", Direction.CODEC, camFacing);
     }
 
     @Override
@@ -104,9 +241,30 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     {
         super.loadAdditional(input);
         powered = input.getBooleanOr("powered", false);
-        setChannel = input.getStringOr("setChannel", "");
         placingFace = input.read("placingFace", Direction.CODEC).orElse(Direction.NORTH);
         wirelessPos = new ArrayList<>(input.read("wirelessPos", BlockPos.CODEC.listOf()).orElse(List.of()));
+        channelId = input.getStringOr("channelId", "");
+        channelName = input.getStringOr("channelName", "");
+        cameraId = input.getStringOr("cameraId", "");
+        cycle = input.getBooleanOr("cycle", false);
+        cycleSeconds = input.getIntOr("cycleSeconds", 10);
+        cycleIndex = input.getIntOr("cycleIndex", 0);
+        camValid = input.getBooleanOr("camValid", false);
+        camName = input.getStringOr("camName", "");
+        camDimension = input.read("camDimension", Level.RESOURCE_KEY_CODEC).orElse(Level.OVERWORLD);
+        camPos = input.read("camPos", BlockPos.CODEC).orElse(BlockPos.ZERO);
+        camFacing = input.read("camFacing", Direction.CODEC).orElse(Direction.NORTH);
         onClientDataReceived(); //again, now the projector's own fields are loaded too
+    }
+
+    /** Identifies the camera currently shown, so the client can tell when it switches. */
+    public String cameraSignature()
+    {
+        return camValid ? camDimension.location() + "|" + camPos.asLong() + "|" + camFacing : "";
+    }
+
+    public boolean sameCamera(GlassProjectorBlockEntity other)
+    {
+        return Objects.equals(cameraSignature(), other.cameraSignature());
     }
 }

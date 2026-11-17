@@ -56,7 +56,7 @@ public class GlassTerminalBlock extends BaseEntityBlock
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type)
     {
-        return level.isClientSide ? createTickerHelper(type, GlassRegistry.GLASS_TERMINAL_BE, GlassTerminalBlockEntity::clientTick) : null;
+        return level.isClientSide ? null : createTickerHelper(type, GlassRegistry.GLASS_TERMINAL_BE, GlassTerminalBlockEntity::serverTick);
     }
 
     @Override

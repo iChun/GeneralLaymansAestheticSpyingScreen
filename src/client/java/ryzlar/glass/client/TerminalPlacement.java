@@ -10,7 +10,6 @@ import org.joml.Vector3f;
 import ryzlar.glass.GlassRegistry;
 import ryzlar.glass.blockentity.GlassBaseBlockEntity;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
-import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.client.sound.GlassAmbienceSound;
 
 import java.util.HashSet;
@@ -27,7 +26,8 @@ public class TerminalPlacement
 {
     public final String channel;
     public final GlassProjectorBlockEntity master;
-    public final GlassTerminalBlockEntity terminal;
+    /** The camera (terminal) being shown, as the projector reported it. */
+    private final String cameraSignature;
 
     public boolean playedAmbience;
     /** True when the screen is one flat face, so everything between the camera and the terminal's face can be clipped. */
@@ -40,16 +40,16 @@ public class TerminalPlacement
     private final Direction placingFace;
     private final Direction terminalFacing;
 
-    public TerminalPlacement(String channel, GlassProjectorBlockEntity master, GlassTerminalBlockEntity terminal)
+    public TerminalPlacement(String channel, GlassProjectorBlockEntity master)
     {
         this.channel = channel;
         this.master = master;
-        this.terminal = terminal;
+        this.cameraSignature = master.cameraSignature();
         this.placingFace = master.placingFace;
-        this.terminalFacing = terminal.facing;
+        this.terminalFacing = master.camFacing;
 
         sourceOrigin = Vec3.atCenterOf(master.getBlockPos());
-        destOrigin = Vec3.atCenterOf(terminal.getBlockPos()).add(Vec3.atLowerCornerOf(terminal.facing.getUnitVec3i()));
+        destOrigin = Vec3.atCenterOf(master.camPos).add(Vec3.atLowerCornerOf(terminalFacing.getUnitVec3i()));
 
         Matrix3f source = frame(placingFace.getOpposite());
         Matrix3f dest = frame(terminalFacing);
@@ -70,9 +70,13 @@ public class TerminalPlacement
 
     public boolean isValid()
     {
-        return !master.isRemoved() && !terminal.isRemoved()
-                && master.placingFace == placingFace && terminal.facing == terminalFacing
-                && master.active && channel.equals(terminal.channelName);
+        return isSameScreen() && cameraSignature.equals(master.cameraSignature());
+    }
+
+    /** Still the same projector showing the same screen (the camera may have changed). */
+    public boolean isSameScreen()
+    {
+        return !master.isRemoved() && master.active && master.placingFace == placingFace && channel.equals(master.channel);
     }
 
     public Set<GlassBaseBlockEntity> activeBlocks()

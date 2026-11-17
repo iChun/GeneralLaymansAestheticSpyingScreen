@@ -24,6 +24,7 @@ public class Glass implements ModInitializer
     @Override
     public void onInitialize()
     {
+        GlassConfig.load();
         GlassRegistry.init();
         GlassNetworking.init();
     }

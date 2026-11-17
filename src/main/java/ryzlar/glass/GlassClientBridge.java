@@ -36,10 +36,6 @@ public interface GlassClientBridge
     /** Called when a glass block entity is removed or unloaded on the client. */
     default void removeGlass(GlassBaseBlockEntity glass) {}
 
-    default void syncTerminal(GlassTerminalBlockEntity terminal) {}
-
-    default void removeTerminal(GlassTerminalBlockEntity terminal) {}
-
     final class Holder
     {
         private static GlassClientBridge instance = new GlassClientBridge() {};

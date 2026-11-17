@@ -7,41 +7,83 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.Nullable;
-import ryzlar.glass.GlassClientBridge;
 import ryzlar.glass.GlassRegistry;
+import ryzlar.glass.network.GlassNetworkData;
+import ryzlar.glass.network.GlassNetworkManager;
 
 /**
- * The GLASS terminal: the "camera" whose view is shown on every GLASS screen tuned to its channel.
- * Port of TileEntityGlassTerminal.
+ * The GLASS terminal: a camera on a GLASS channel. A channel can have several cameras; projectors pick one of them or
+ * cycle through them all.
  */
 public class GlassTerminalBlockEntity extends BlockEntity
 {
-    public String channelName = "";
+    private static final int VALIDATE_INTERVAL = 40;
+
+    public String channelId = "";
+    public String cameraId = "";
+    public String cameraName = "";
     public Direction facing = Direction.UP;
+
+    private int validateTimer;
 
     public GlassTerminalBlockEntity(BlockPos pos, BlockState state)
     {
         super(GlassRegistry.GLASS_TERMINAL_BE, pos, state);
     }
 
-    public static void clientTick(Level level, BlockPos pos, BlockState state, GlassTerminalBlockEntity terminal)
+    public boolean isLinked()
     {
-        GlassClientBridge.get().syncTerminal(terminal);
+        return !cameraId.isEmpty();
     }
 
-    @Override
-    public void setRemoved()
+    /** Server: drop the link if the channel or camera was removed from the network (or this is a copy of a terminal). */
+    public static void serverTick(Level level, BlockPos pos, BlockState state, GlassTerminalBlockEntity terminal)
     {
-        super.setRemoved();
-        if(level != null && level.isClientSide)
+        if(!terminal.isLinked() || ++terminal.validateTimer < VALIDATE_INTERVAL)
         {
-            GlassClientBridge.get().removeTerminal(this);
+            return;
+        }
+        terminal.validateTimer = 0;
+        GlassNetworkData.Camera camera = GlassNetworkManager.data(((ServerLevel)level).getServer()).camera(terminal.channelId, terminal.cameraId);
+        if(camera == null || !camera.pos().equals(pos) || !camera.dimension().equals(level.dimension()))
+        {
+            terminal.clearLink();
+        }
+    }
+
+    public void unlink(MinecraftServer server)
+    {
+        if(isLinked())
+        {
+            GlassNetworkManager.forgetCamera(server, channelId, cameraId);
+        }
+        clearLink();
+    }
+
+    private void clearLink()
+    {
+        channelId = "";
+        cameraId = "";
+        cameraName = "";
+        sync();
+    }
+
+    /** The terminal was broken (not just unloaded): take its camera off the network. */
+    @Override
+    public void preRemoveSideEffects(BlockPos pos, BlockState state)
+    {
+        super.preRemoveSideEffects(pos, state);
+        if(level instanceof ServerLevel serverLevel && isLinked())
+        {
+            GlassNetworkManager.forgetCamera(serverLevel.getServer(), channelId, cameraId);
         }
     }
 
@@ -59,7 +101,9 @@ public class GlassTerminalBlockEntity extends BlockEntity
     protected void saveAdditional(ValueOutput output)
     {
         super.saveAdditional(output);
-        output.putString("channelName", channelName);
+        output.putString("channelId", channelId);
+        output.putString("cameraId", cameraId);
+        output.putString("cameraName", cameraName);
         output.store("facing", Direction.CODEC, facing);
     }
 
@@ -67,12 +111,10 @@ public class GlassTerminalBlockEntity extends BlockEntity
     protected void loadAdditional(ValueInput input)
     {
         super.loadAdditional(input);
-        channelName = input.getStringOr("channelName", "");
+        channelId = input.getStringOr("channelId", "");
+        cameraId = input.getStringOr("cameraId", "");
+        cameraName = input.getStringOr("cameraName", "");
         facing = input.read("facing", Direction.CODEC).orElse(Direction.UP);
-        if(level != null && level.isClientSide)
-        {
-            GlassClientBridge.get().syncTerminal(this);
-        }
     }
 
     @Override

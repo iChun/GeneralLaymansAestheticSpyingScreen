@@ -17,6 +17,7 @@ public class GlassClient implements ClientModInitializer
     public void onInitializeClient()
     {
         GlassClientBridge.set(GlassClientState.INSTANCE);
+        GlassNetClient.init();
 
         BlockRenderLayerMap.putBlocks(ChunkSectionLayer.CUTOUT, GlassRegistry.GLASS_EXTENSION, GlassRegistry.GLASS_PROJECTOR, GlassRegistry.GLASS_WIRELESS_EXTENSION);
 
@@ -26,6 +27,9 @@ public class GlassClient implements ClientModInitializer
         BlockEntityRenderers.register(GlassRegistry.GLASS_TERMINAL_BE, GlassTerminalRenderer::new);
 
         ClientTickEvents.END_CLIENT_TICK.register(GlassClientState.INSTANCE::clientTick);
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(GlassClientState.INSTANCE::clear));
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
+            GlassClientState.INSTANCE.clear();
+            GlassNetClient.reset();
+        }));
     }
 }
