@@ -1,0 +1,18 @@
+{
+  "block.generallaymansaestheticspyingscreen.glass_extension": "GLASS Extension",
+  "block.generallaymansaestheticspyingscreen.glass_projector": "GLASS Projector",
+  "block.generallaymansaestheticspyingscreen.glass_wireless_extension": "GLASS Wireless Extension",
+  "block.generallaymansaestheticspyingscreen.glass_terminal": "GLASS Terminal",
+
+  "glass.gui.channelName": "Channel Name",
+  "glass.gui.publicChannel": "Public Channel",
+  "glass.gui.availableChannels": "Available Channels",
+  "glass.gui.public": "(Public)",
+  "glass.gui.availableProjectors": "Available Projectors",
+  "glass.gui.notSet": "<Not Set>",
+  "glass.gui.wirelessExtensionOrder": "Wireless Extension Order",
+  "glass.gui.wirelessOrderButton": "Wireless extension order",
+  "glass.gui.channelsButton": "Channels",
+
+  "subtitles.generallaymansaestheticspyingscreen.amb": "GLASS hums"
+}

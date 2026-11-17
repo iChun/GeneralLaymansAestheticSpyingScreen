@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    "WCW",
+    "WNW",
+    "WRW"
+  ],
+  "key": {
+    "W": "minecraft:glass",
+    "C": "minecraft:ender_pearl",
+    "N": "minecraft:beacon",
+    "R": "minecraft:daylight_detector"
+  },
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:glass_projector",
+    "count": 1
+  }
+}

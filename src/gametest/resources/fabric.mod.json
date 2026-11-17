@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "glass-test",
+  "version": "1.0.0",
+  "name": "GLASS Tests",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-client-gametest": [
+      "ryzlar.glass.test.GlassClientGameTest"
+    ]
+  },
+  "depends": {
+    "generallaymansaestheticspyingscreen": "*"
+  }
+}

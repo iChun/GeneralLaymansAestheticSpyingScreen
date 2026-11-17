@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    "WCW",
+    "WNW",
+    "WRW"
+  ],
+  "key": {
+    "W": "minecraft:glass",
+    "C": "minecraft:gold_ingot",
+    "N": "minecraft:ender_pearl",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:glass_extension",
+    "count": 1
+  }
+}

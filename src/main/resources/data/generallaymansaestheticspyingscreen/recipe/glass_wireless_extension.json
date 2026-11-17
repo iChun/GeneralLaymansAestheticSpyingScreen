@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "redstone",
+  "ingredients": [
+    "generallaymansaestheticspyingscreen:glass_extension",
+    "minecraft:end_crystal"
+  ],
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:glass_wireless_extension",
+    "count": 1
+  }
+}

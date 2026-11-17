@@ -1,0 +1,49 @@
+package ryzlar.glass;
+
+import net.minecraft.core.BlockPos;
+import ryzlar.glass.blockentity.GlassBaseBlockEntity;
+import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
+import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
+import ryzlar.glass.blockentity.GlassWirelessBlockEntity;
+
+/**
+ * Lets common code (blocks, block entities) reach client-only code without loading client classes on a server.
+ * The client mod initializer installs the real implementation with {@link #set}.
+ */
+public interface GlassClientBridge
+{
+    static GlassClientBridge get()
+    {
+        return Holder.instance;
+    }
+
+    static void set(GlassClientBridge bridge)
+    {
+        Holder.instance = bridge;
+    }
+
+    default void openTerminalScreen(GlassTerminalBlockEntity terminal) {}
+
+    default void openProjectorScreen(GlassProjectorBlockEntity projector) {}
+
+    default void openWirelessScreen(GlassWirelessBlockEntity wireless) {}
+
+    default void onGlassClicked(BlockPos pos) {}
+
+    /** Called every client tick by each glass block entity so the client knows which glass belongs to which channel. */
+    default void syncGlass(GlassBaseBlockEntity glass) {}
+
+    /** Called when a glass block entity is removed or unloaded on the client. */
+    default void removeGlass(GlassBaseBlockEntity glass) {}
+
+    default void syncTerminal(GlassTerminalBlockEntity terminal) {}
+
+    default void removeTerminal(GlassTerminalBlockEntity terminal) {}
+
+    final class Holder
+    {
+        private static GlassClientBridge instance = new GlassClientBridge() {};
+
+        private Holder() {}
+    }
+}

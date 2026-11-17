@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "generallaymansaestheticspyingscreen",
+  "version": "${version}",
+  "name": "GeneralLaymansAestheticSpyingScreen",
+  "description": "Also known as GLASS. Turn walls of glass into screens that show what a far-away terminal sees. Fabric port of iChun's mod.",
+  "authors": [
+    "iChun (original mod)",
+    "ryzlar (Fabric port)"
+  ],
+  "contact": {
+    "sources": "https://github.com/ryzlar/GeneralLaymansAestheticSpyingScreen"
+  },
+  "license": "LGPL-3.0-only",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "ryzlar.glass.Glass"
+    ],
+    "client": [
+      "ryzlar.glass.client.GlassClient"
+    ]
+  },
+  "mixins": [
+    {
+      "config": "generallaymansaestheticspyingscreen.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.17.0",
+    "minecraft": "~1.21.8",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

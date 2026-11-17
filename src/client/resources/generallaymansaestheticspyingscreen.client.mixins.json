@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "ryzlar.glass.client.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "CameraMixin",
+    "GameRendererAccessor",
+    "GameRendererMixin",
+    "LevelRendererAccessor",
+    "LevelRendererMixin",
+    "MinecraftMixin",
+    "SectionOcclusionGraphAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

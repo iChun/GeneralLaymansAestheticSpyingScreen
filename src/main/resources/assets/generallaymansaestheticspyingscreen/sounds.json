@@ -1,6 +1,7 @@
 {
   "amb": {
     "category": "block",
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.amb",
     "sounds": [
       "generallaymansaestheticspyingscreen:amb"
     ]

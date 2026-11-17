@@ -13,3 +13,7 @@
 /build
 /libs
 /src/api
+# Fabric / Loom
+/run
+/out
+.architectury-transformer
