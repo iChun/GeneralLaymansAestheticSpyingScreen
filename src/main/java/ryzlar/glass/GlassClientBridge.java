@@ -3,6 +3,7 @@ package ryzlar.glass;
 import net.minecraft.core.BlockPos;
 import ryzlar.glass.blockentity.GlassBaseBlockEntity;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
+import ryzlar.glass.blockentity.GlassSceneSelectorBlockEntity;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.blockentity.GlassWirelessBlockEntity;
 
@@ -27,6 +28,8 @@ public interface GlassClientBridge
     default void openProjectorScreen(GlassProjectorBlockEntity projector) {}
 
     default void openWirelessScreen(GlassWirelessBlockEntity wireless) {}
+
+    default void openSceneSelectorScreen(GlassSceneSelectorBlockEntity selector) {}
 
     default void onGlassClicked(BlockPos pos) {}
 

@@ -37,6 +37,14 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     public String channelName = "";
     private int resolveTimer;
 
+    /**
+     * Cloak mode: instead of a camera, the glass shows the world right behind it as if the {@link #cloakDepth} blocks
+     * behind the screen were not there (an invisible base). Needs no channel.
+     */
+    public boolean cloak;
+    public int cloakDepth = 4;
+    public static final int MAX_CLOAK_DEPTH = 32;
+
     //The camera being shown, resolved by the server
     public boolean camValid;
     public ResourceKey<Level> camDimension = Level.OVERWORLD;
@@ -51,10 +59,19 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         super(GlassRegistry.GLASS_PROJECTOR_BE, pos, state);
     }
 
-    /** The key the glass of this projector's screen carries (unique per projector, so screens never mix). */
+    /**
+     * The key the glass of this projector's screen carries: unique per projector, so screens never mix, and the same
+     * whatever it shows, so switching scene (channel) or cloak while it is on keeps the screen up and only swaps the image.
+     */
     public String screenKey()
     {
-        return channelId.isEmpty() ? "" : channelId + "@" + getBlockPos().asLong();
+        return channelId.isEmpty() && !cloak ? "" : "screen@" + getBlockPos().asLong();
+    }
+
+    /** True when there is something to show once powered: a channel, or cloak mode. */
+    public boolean hasFeed()
+    {
+        return cloak || !channelId.isEmpty();
     }
 
     public boolean isShowingOwnScreen()
@@ -78,6 +95,11 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
 
         if(!level.isClientSide)
         {
+            //A screen started with an older key (or whose feed went away) is switched off; powering it again restarts it.
+            if(active && distance == 1 && !channel.equals(screenKey()))
+            {
+                turnOff();
+            }
             if(wirelessPos.removeIf(pos -> level.isLoaded(pos) && !(level.getBlockEntity(pos) instanceof GlassWirelessBlockEntity)))
             {
                 sync();
@@ -107,7 +129,7 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         if(channel == null && !channelId.isEmpty())
         {
             //The channel was deleted.
-            if(active)
+            if(active && !cloak)
             {
                 turnOff();
             }
@@ -153,7 +175,7 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     {
         if(newState)
         {
-            if(!active && !channelId.isEmpty())
+            if(!active && hasFeed())
             {
                 active = true;
                 channel = screenKey();
@@ -173,7 +195,7 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         }
     }
 
-    private void turnOff()
+    public void turnOff()
     {
         active = false;
         fadeoutTime = FADEOUT_TIME;
@@ -196,6 +218,8 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         output.store("wirelessPos", BlockPos.CODEC.listOf(), List.copyOf(wirelessPos));
         output.putString("channelId", channelId);
         output.putString("channelName", channelName);
+        output.putBoolean("cloak", cloak);
+        output.putInt("cloakDepth", cloakDepth);
         output.putBoolean("camValid", camValid);
         output.store("camDimension", Level.RESOURCE_KEY_CODEC, camDimension);
         output.store("camPos", BlockPos.CODEC, camPos);
@@ -211,6 +235,8 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         wirelessPos = new ArrayList<>(input.read("wirelessPos", BlockPos.CODEC.listOf()).orElse(List.of()));
         channelId = input.getStringOr("channelId", "");
         channelName = input.getStringOr("channelName", "");
+        cloak = input.getBooleanOr("cloak", false);
+        cloakDepth = Math.clamp(input.getIntOr("cloakDepth", 4), 1, MAX_CLOAK_DEPTH);
         camValid = input.getBooleanOr("camValid", false);
         camDimension = input.read("camDimension", Level.RESOURCE_KEY_CODEC).orElse(Level.OVERWORLD);
         camPos = input.read("camPos", BlockPos.CODEC).orElse(BlockPos.ZERO);
@@ -221,6 +247,10 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     /** Identifies the camera currently shown, so the client can tell when it switches. */
     public String cameraSignature()
     {
+        if(cloak)
+        {
+            return "cloak|" + cloakDepth;
+        }
         return camValid ? camDimension.location() + "|" + camPos.asLong() + "|" + camFacing : "";
     }
 }

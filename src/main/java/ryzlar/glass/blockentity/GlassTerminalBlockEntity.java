@@ -73,8 +73,7 @@ public class GlassTerminalBlockEntity extends BlockEntity
         setChanged();
         if(level != null && !level.isClientSide)
         {
-            BlockState state = getBlockState();
-            level.sendBlockUpdated(getBlockPos(), state, state, 3);
+            ryzlar.glass.GlassUtil.sendToTracking(this);
         }
     }
 

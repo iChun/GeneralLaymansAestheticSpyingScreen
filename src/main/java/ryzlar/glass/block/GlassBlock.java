@@ -116,14 +116,10 @@ public class GlassBlock extends TransparentBlock implements EntityBlock
     @Override
     protected void attack(BlockState state, Level level, BlockPos pos, Player player)
     {
+        //Punching a screen sends a ripple across it from where you hit (drawn on the client).
         if(level.isClientSide && level.getBlockEntity(pos) instanceof GlassBaseBlockEntity base && base.active)
         {
             GlassClientBridge.get().onGlassClicked(pos);
-
-            base.fadeoutTime = GlassBaseBlockEntity.FADEOUT_TIME;
-            base.fadePropagate = GlassBaseBlockEntity.PROPAGATE_TIME;
-            base.fadeDistance = 2;
-            base.fadePropagate();
         }
     }
 

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    "BBB",
+    "GRG",
+    "SSS"
+  ],
+  "key": {
+    "B": "minecraft:stone_button",
+    "G": "minecraft:glass_pane",
+    "R": "minecraft:comparator",
+    "S": "minecraft:polished_blackstone"
+  },
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:glass_scene_selector",
+    "count": 1
+  }
+}

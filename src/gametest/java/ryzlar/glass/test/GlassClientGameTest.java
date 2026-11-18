@@ -11,12 +11,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ryzlar.glass.blockentity.GlassBaseBlockEntity;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
+import ryzlar.glass.blockentity.GlassSceneSelectorBlockEntity;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.client.gui.CameraScreen;
 import ryzlar.glass.client.gui.ProjectorScreen;
+import ryzlar.glass.client.gui.SceneSelectorScreen;
 import ryzlar.glass.client.gui.WirelessOrderScreen;
 import ryzlar.glass.network.GlassNetworkData;
 import ryzlar.glass.network.GlassNetworkManager;
+import ryzlar.glass.network.GlassNetworking;
 import ryzlar.glass.network.PasswordHasher;
 
 import java.util.List;
@@ -35,12 +38,22 @@ public class GlassClientGameTest implements FabricClientGameTest
     private static final Logger LOGGER = LoggerFactory.getLogger("glass-test");
 
     private static final BlockPos PROJECTOR = new BlockPos(0, -58, 0);
+    private static final BlockPos LEVER = new BlockPos(0, -58, -1);
+    private static final BlockPos CLOAK_PROJECTOR = new BlockPos(-37, -60, -40);
+    private static final BlockPos SELECTOR = new BlockPos(5, -60, 3);
     private static final BlockPos GOLD_CAMERA = new BlockPos(40, -59, 0);
     private static final BlockPos DIAMOND_CAMERA = new BlockPos(80, -59, 0);
     private static final BlockPos SPARE_TERMINAL = new BlockPos(5, -60, 6);
     private static final BlockPos WIRELESS_PROJECTOR = new BlockPos(-14, -59, 6);
     private static final BlockPos WINDOW_PROJECTOR = new BlockPos(23, -60, 30);
     private static final BlockPos WINDOW_CAMERA = new BlockPos(23, -60, 31);
+
+    /** Right-clicks a lever as the player, like flicking it by hand. */
+    private static void flickLever(ClientGameTestContext context, BlockPos pos)
+    {
+        context.runOnClient(mc -> mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND,
+                new net.minecraft.world.phys.BlockHitResult(net.minecraft.world.phys.Vec3.atCenterOf(pos), net.minecraft.core.Direction.NORTH, pos, false)));
+    }
 
     private static void check(boolean condition, String message)
     {
@@ -168,11 +181,30 @@ public class GlassClientGameTest implements FabricClientGameTest
             singleplayer.getClientWorld().waitForChunksRender();
             context.waitTicks(10);
             server.runCommand("setblock 0 -58 -1 minecraft:redstone_block");
-            context.waitTicks(3);
-            context.takeScreenshot("turn_on");
+            int onWaited = 0;
+            for(int tick : new int[] { 3, 6, 9, 12, 16, 22 })
+            {
+                context.waitTicks(tick - onWaited);
+                onWaited = tick;
+                context.takeScreenshot("turn_on_tick_" + (tick < 10 ? "0" : "") + tick);
+            }
             context.waitTicks(60);
             check(server.computeOnServer(GlassClientGameTest::countActive) == 35, "all 35 GLASS blocks turned on");
             context.takeScreenshot("screen_gold");
+
+            //Punching the glass makes it ripple (the client starts the ripple when you hit it).
+            context.runOnClient(mc -> {
+                if(mc.level.getBlockEntity(new BlockPos(0, -57, 0)) instanceof GlassBaseBlockEntity hit)
+                {
+                    hit.fadeoutTime = GlassBaseBlockEntity.FADEOUT_TIME;
+                    hit.fadePropagate = GlassBaseBlockEntity.PROPAGATE_TIME;
+                    hit.fadeDistance = 2;
+                    hit.fadePropagate();
+                }
+            });
+            context.waitTicks(3);
+            context.takeScreenshot("punch_ripple");
+            context.waitTicks(20);
 
             //A wireless screen showing the diamond channel.
             server.runCommand("setblock -16 -55 6 generallaymansaestheticspyingscreen:glass_wireless_extension");
@@ -234,6 +266,185 @@ public class GlassClientGameTest implements FabricClientGameTest
             context.waitTicks(10);
             context.takeScreenshot("gui_wireless_order");
             context.setScreen(() -> null);
+
+            //Switching off plays the turn-on animation in reverse: the image fades to white, furthest blocks first.
+            server.runCommand("tp @p 0.5 -60 8.5 180 0");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(20);
+            server.runCommand("setblock 0 -58 -1 minecraft:air");
+            int waited = 0;
+            for(int tick : new int[] { 1, 4, 8, 12, 16, 20, 30 })
+            {
+                context.waitTicks(tick - waited);
+                waited = tick;
+                context.takeScreenshot("switch_off_tick_" + (tick < 10 ? "0" : "") + tick);
+            }
+            context.waitTicks(60);
+            check(server.computeOnServer(GlassClientGameTest::countActive) == 0, "screen switched off");
+            server.runCommand("setblock 0 -58 -1 minecraft:redstone_block");
+            context.waitTicks(60);
+            check(server.computeOnServer(GlassClientGameTest::countActive) == 35, "screen switched on again");
+            context.takeScreenshot("reon_after_off");
+
+            //A block right in front of the camera: the screen shows that block, steadily (its face lies on the
+            //terminal's front face, where the view is clipped; it used to flicker like z-fighting).
+            server.runCommand("setblock 40 -59 -1 minecraft:emerald_block");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(10);
+            for(int i = 0; i < 3; i++)
+            {
+                context.takeScreenshot("blocked_camera_" + i);
+                context.waitTicks(1);
+            }
+            server.runCommand("setblock 40 -59 -1 minecraft:air");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(10);
+
+            //A lever, flicked like a player would: off, on, off quickly, then on and off again with time to watch.
+            String leverOn = "setblock 0 -58 -1 minecraft:lever[face=wall,facing=north,powered=true]";
+            String leverOff = "setblock 0 -58 -1 minecraft:lever[face=wall,facing=north,powered=false]";
+            server.runCommand(leverOn);
+            context.waitTicks(40);
+            server.runCommand(leverOff);
+            context.waitTicks(6);
+            server.runCommand(leverOn);
+            context.waitTicks(6);
+            server.runCommand(leverOff);
+            context.waitTicks(6);
+            server.runCommand(leverOn);
+            context.waitTicks(60);
+            check(server.computeOnServer(GlassClientGameTest::countActive) == 35, "screen on after flicking the lever");
+            context.takeScreenshot("lever_on_after_flicking");
+            server.runCommand(leverOff);
+            int leverWaited = 0;
+            for(int tick : new int[] { 3, 8, 14 })
+            {
+                context.waitTicks(tick - leverWaited);
+                leverWaited = tick;
+                context.takeScreenshot("lever_off_tick_" + (tick < 10 ? "0" : "") + tick);
+            }
+            context.waitTicks(60);
+            context.takeScreenshot("lever_off_done");
+            server.runCommand(leverOn);
+            context.waitTicks(60);
+            context.takeScreenshot("lever_on_again");
+
+            //The player flicks the lever by hand: off a second after switching on (while the view is still being
+            //pre-drawn), and off again after a while. Both times the wave must shrink back, not vanish.
+            server.runCommand("attribute @p minecraft:block_interaction_range base set 24");
+            server.runCommand(leverOff);
+            context.waitTicks(60);
+            for(int round = 0; round < 2; round++)
+            {
+                flickLever(context, LEVER);
+                context.waitTicks(round == 0 ? 25 : 120);
+                check(server.computeOnServer(GlassClientGameTest::countActive) == 35, "hand lever round " + round + ": screen on");
+                flickLever(context, LEVER);
+                int handWaited = 0;
+                for(int tick : new int[] { 2, 5, 8, 11 })
+                {
+                    context.waitTicks(tick - handWaited);
+                    handWaited = tick;
+                    context.takeScreenshot("hand_lever_" + round + "_off_tick_" + (tick < 10 ? "0" : "") + tick);
+                }
+                context.waitTicks(60);
+            }
+            server.runCommand("setblock 0 -58 -1 minecraft:redstone_block");
+            context.waitTicks(20);
+
+            //Switching scene while the screen is on: the new scene wipes over the old one in a wave from the projector.
+            server.runCommand("tp @p 0.5 -60 8.5 180 0");
+            context.waitTicks(40);
+            context.takeScreenshot("scene_before_switch");
+            server.runOnServer(s -> GlassNetworking.showChannel((GlassProjectorBlockEntity)s.overworld().getBlockEntity(PROJECTOR),
+                    GlassNetworkManager.data(s), diamondId, "Diamond"));
+            int sceneWaited = 0;
+            for(int tick : new int[] { 3, 6, 9, 13, 20 })
+            {
+                context.waitTicks(tick - sceneWaited);
+                sceneWaited = tick;
+                context.takeScreenshot("scene_wipe_tick_" + (tick < 10 ? "0" : "") + tick);
+            }
+            check(server.computeOnServer(GlassClientGameTest::countActive) == 35, "screen stays on while switching scene");
+            server.runOnServer(s -> GlassNetworking.showChannel((GlassProjectorBlockEntity)s.overworld().getBlockEntity(PROJECTOR),
+                    GlassNetworkManager.data(s), goldId, "Gold"));
+            context.waitTicks(40);
+            context.takeScreenshot("scene_back_to_gold");
+
+            //Cloak: a glass wall in front of a brick base shows what is behind the base, as if it were not there.
+            server.runCommand("fill -48 -61 -60 -24 -61 -25 minecraft:grass_block");
+            //Under the base the grass has died, as it does under blocks; the cloak must not show that footprint.
+            server.runCommand("fill -40 -61 -45 -34 -61 -41 minecraft:dirt");
+            server.runCommand("fill -40 -60 -45 -34 -56 -41 minecraft:bricks");
+            server.runCommand("fill -39 -60 -50 -39 -55 -50 minecraft:red_wool");
+            server.runCommand("fill -37 -60 -50 -37 -55 -50 minecraft:blue_wool");
+            server.runCommand("fill -35 -60 -50 -35 -55 -50 minecraft:yellow_wool");
+            server.runCommand("fill -46 -60 -56 -28 -51 -56 minecraft:gold_block");
+            server.runCommand("fill -40 -60 -40 -34 -56 -40 generallaymansaestheticspyingscreen:glass_extension");
+            server.runCommand("setblock -37 -60 -40 generallaymansaestheticspyingscreen:glass_projector{placingFace:\"south\"}");
+            context.waitTicks(2);
+            server.runOnServer(s -> {
+                GlassProjectorBlockEntity cloak = (GlassProjectorBlockEntity)s.overworld().getBlockEntity(CLOAK_PROJECTOR);
+                cloak.cloak = true;
+                cloak.cloakDepth = 6;
+                cloak.sync();
+            });
+            server.runCommand("tp @p -36.5 -60 -29.5 180 0");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(20);
+            context.takeScreenshot("cloak_off");
+            server.runCommand("setblock -37 -61 -40 minecraft:redstone_block");
+            context.waitTicks(60);
+            check(server.computeOnServer(s -> s.overworld().getBlockEntity(CLOAK_PROJECTOR) instanceof GlassProjectorBlockEntity c && c.active), "cloak on");
+            context.takeScreenshot("cloak_on");
+            server.runCommand("tp @p -30.5 -60 -32.5 150 0");
+            context.waitTicks(20);
+            context.takeScreenshot("cloak_on_angle");
+            //Close up, looking at the glass: no selection outline gives the cloak away.
+            server.runCommand("tp @p -36.5 -60 -37.5 160 25");
+            context.waitTicks(20);
+            context.takeScreenshot("cloak_close");
+            check(context.computeOnClient(mc -> mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit
+                    && ryzlar.glass.client.GlassClientState.INSTANCE.isHiddenByCloak(hit.getBlockPos(), mc.gameRenderer.getMainCamera().getPosition())), "cloak hides the outline of what you look at");
+            server.runCommand("setblock -37 -61 -40 minecraft:grass_block");
+            context.waitTicks(40);
+            context.takeScreenshot("cloak_switched_off");
+            //Back to the first screen, so the cameras' chunks are loaded again for the checks below.
+            server.runCommand("tp @p 0.5 -60 8.5 180 0");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(40);
+
+            //The scene selector: linked to the nearest projector, a list of scenes, a redstone pulse shows the next one.
+            server.runCommand("setblock 5 -60 3 generallaymansaestheticspyingscreen:glass_scene_selector");
+            context.waitTicks(2);
+            boolean linked = server.computeOnServer(s -> {
+                GlassSceneSelectorBlockEntity selector = (GlassSceneSelectorBlockEntity)s.overworld().getBlockEntity(SELECTOR);
+                return selector.linkNearest() && PROJECTOR.equals(selector.projectorPos)
+                        && selector.addScene(goldId, "Gold") && selector.addScene(diamondId, "Diamond")
+                        && !selector.addScene(goldId, "Gold") && selector.showScene(0);
+            });
+            check(linked, "selector linked to the nearest projector, with two scenes");
+            context.waitTicks(30);
+            check(server.computeOnServer(s -> ((GlassProjectorBlockEntity)s.overworld().getBlockEntity(PROJECTOR)).channelId.equals(goldId)), "selector shows scene 1");
+            server.runCommand("setblock 5 -60 2 minecraft:redstone_block");
+            context.waitTicks(2);
+            server.runCommand("setblock 5 -60 2 minecraft:air");
+            context.waitTicks(8);
+            context.takeScreenshot("selector_pulse_wipe");
+            context.waitTicks(30);
+            check(server.computeOnServer(s -> ((GlassProjectorBlockEntity)s.overworld().getBlockEntity(PROJECTOR)).channelId.equals(diamondId)), "redstone pulse shows the next scene");
+            context.takeScreenshot("selector_scene_2");
+            GlassSceneSelectorBlockEntity clientSelector = context.computeOnClient(mc -> (GlassSceneSelectorBlockEntity)mc.level.getBlockEntity(SELECTOR));
+            GlassProjectorBlockEntity clientProjector = context.computeOnClient(mc -> (GlassProjectorBlockEntity)mc.level.getBlockEntity(PROJECTOR));
+            context.setScreen(() -> new SceneSelectorScreen(clientSelector));
+            context.waitTicks(15);
+            context.takeScreenshot("gui_scene_selector");
+            context.setScreen(() -> new ProjectorScreen(clientProjector));
+            context.waitTicks(15);
+            context.takeScreenshot("gui_projector_cloak");
+            context.setScreen(() -> null);
+            server.runOnServer(s -> ((GlassSceneSelectorBlockEntity)s.overworld().getBlockEntity(SELECTOR)).showScene(0));
+            context.waitTicks(30);
 
             //Removing a camera terminal takes the channel's camera offline: at once when broken, and within a second even
             //when the removal skips block entity side effects (as /setblock does).

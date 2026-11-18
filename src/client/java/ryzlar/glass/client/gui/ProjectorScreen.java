@@ -31,6 +31,7 @@ public class ProjectorScreen extends HoloScreen
     private HoloPasswordField password;
     private HoloButton unlock;
     private HoloButton show;
+    private HoloButton cloak;
     private String query = "";
     /** Show this channel as soon as the server confirms the password. */
     @Nullable
@@ -39,7 +40,7 @@ public class ProjectorScreen extends HoloScreen
 
     public ProjectorScreen(GlassProjectorBlockEntity projector)
     {
-        super(Component.translatable("glass.ui.projector"), 350, 214);
+        super(Component.translatable("glass.ui.projector"), 350, 236);
         this.projector = projector;
     }
 
@@ -76,6 +77,10 @@ public class ProjectorScreen extends HoloScreen
         unlock = addRenderableWidget(new HoloButton(rx, top + 138, rw, 16, Component.translatable("glass.ui.unlock"), b -> doUnlock()));
         show = addRenderableWidget(new HoloButton(rx, top + 138, rw, 16, Component.translatable("glass.ui.show"), b -> doShow()));
         addRenderableWidget(new HoloButton(rx, top + 160, rw, 14, Component.translatable("glass.ui.wireless"), b -> minecraft.setScreen(new WirelessOrderScreen(projector, this))));
+        //Cloak: show the world behind the screen as if the blocks right behind it were not there.
+        cloak = addRenderableWidget(new HoloButton(rx, top + 180, rw, 14, cloakLabel(), b -> sendCloak(!projector.cloak, projector.cloakDepth)));
+        addRenderableWidget(new HoloButton(rx, top + 198, 16, 14, Component.literal("-"), b -> sendCloak(projector.cloak, projector.cloakDepth - 1)));
+        addRenderableWidget(new HoloButton(rx + rw - 16, top + 198, 16, 14, Component.literal("+"), b -> sendCloak(projector.cloak, projector.cloakDepth + 1)));
         setInitialFocus(search);
     }
 
@@ -119,10 +124,21 @@ public class ProjectorScreen extends HoloScreen
         show.active = selected != null && !channelLocked(selected);
     }
 
-    /** The projector is on: it can only switch channel once powered down. */
+    /** Switching channel while the projector is on is fine (the new feed wipes over the old one). */
     private boolean channelLocked(GlassNetworking.ChannelInfo channel)
     {
-        return projector.active && !channel.id().equals(projector.channelId);
+        return false;
+    }
+
+    private Component cloakLabel()
+    {
+        return Component.translatable(projector.cloak ? "glass.ui.cloakOn" : "glass.ui.cloakOff");
+    }
+
+    private void sendCloak(boolean on, int depth)
+    {
+        int clamped = Math.clamp(depth, 1, GlassProjectorBlockEntity.MAX_CLOAK_DEPTH);
+        ClientPlayNetworking.send(new GlassNetworking.ConfigureCloak(projector.getBlockPos(), on, clamped));
     }
 
     private void primaryAction()
@@ -197,7 +213,15 @@ public class ProjectorScreen extends HoloScreen
         int rw = panelW - 212;
 
         Holo.label(g, font, Component.translatable("glass.ui.feed"), rx, top + 41);
-        if(!projector.channelId.isEmpty())
+        cloak.setMessage(cloakLabel());
+        cloak.selected(projector.cloak);
+        Component depth = Component.translatable("glass.ui.cloakDepth", projector.cloakDepth);
+        g.drawString(font, depth, rx + (rw - font.width(depth)) / 2, top + 201, projector.cloak ? Holo.TEXT : Holo.MUTED, false);
+        if(projector.cloak)
+        {
+            g.drawString(font, font.plainSubstrByWidth(Component.translatable("glass.ui.cloakFeed", projector.cloakDepth).getString(), rw), rx, top + 53, Holo.OK, false);
+        }
+        else if(!projector.channelId.isEmpty())
         {
             g.drawString(font, font.plainSubstrByWidth(projector.channelName, rw), rx, top + 53, Holo.TEXT, false);
             g.drawString(font, Component.translatable(projector.camValid ? "glass.ui.online" : "glass.ui.offline"), rx, top + 64,

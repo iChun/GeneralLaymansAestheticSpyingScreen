@@ -16,6 +16,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.Nullable;
 import ryzlar.glass.GlassClientBridge;
 import ryzlar.glass.GlassRegistry;
+import ryzlar.glass.GlassUtil;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -65,6 +66,76 @@ public class GlassBaseBlockEntity extends BlockEntity
     public int fadePropagate;
     public int fadeDistance;
     public int lastDraw;
+
+    /**
+     * Client: the screen appears and disappears as one wave across the whole screen, centred on the projector. It grows
+     * by this many blocks per tick, a little slower than glass turns on (one block per {@link #PROPAGATE_TIME} ticks, and
+     * diagonally further), so every block is on before the wave reaches it.
+     */
+    public static final float WAVE_SPEED = 0.33F;
+
+    /**
+     * Client: switching off. The wave shrinks back into the projector (the screen keeps the camera image until the wave
+     * passes), then the block is plain glass again. {@link #offKey} is empty when not switching off.
+     */
+    public String offKey = "";
+    /** Game time the wave starts shrinking (the same for the whole screen). */
+    public long offStart;
+    /** How far from the projector the wave starts shrinking, in blocks. */
+    public float offRadius = 1F;
+    public List<Direction> offFaces = List.of();
+    public boolean offWireless;
+    /** The screen switching off was a cloak (one image per side). */
+    public boolean offCloak;
+
+    /** Client: game time this block switched on. For the projector, also when the wave starts growing. */
+    public long onStart = Long.MIN_VALUE / 2;
+
+    /** 0 when the block switched on, 1 once {@link #FADEOUT_TIME} ticks have passed. */
+    public float onProgress(float partialTick)
+    {
+        return level == null ? 1F : (level.getGameTime() - onStart + partialTick) / (float)FADEOUT_TIME;
+    }
+
+    /** Radius of the turn-on wave, in blocks from the projector. */
+    public float onRadius(float partialTick)
+    {
+        long ticks = level == null ? Long.MAX_VALUE / 2 : level.getGameTime() - onStart;
+        return ticks > 100_000L ? 1000F : (ticks + partialTick) * WAVE_SPEED;
+    }
+
+    public boolean isSwitchingOff()
+    {
+        return !offKey.isEmpty();
+    }
+
+    /**
+     * Radius of the switch-off wave, shrinking from {@link #offRadius} to 0. It eases in and out (slow, faster, slow)
+     * over the time a steady wave would take, which looks smoother than a constant speed.
+     */
+    public float offWaveRadius(float partialTick)
+    {
+        if(level == null)
+        {
+            return 0F;
+        }
+        float duration = Math.max(1F, offRadius / WAVE_SPEED);
+        float x = Math.clamp((level.getGameTime() - offStart + partialTick) / duration, 0F, 1F);
+        float eased = x * x * x * (x * (x * 6F - 15F) + 10F); //smootherstep
+        return offRadius * (1F - eased);
+    }
+
+    /** True once the switch-off wave has shrunk all the way back into the projector. */
+    public boolean isSwitchOffOver()
+    {
+        return level == null || level.getGameTime() - offStart > Math.max(1F, offRadius / WAVE_SPEED);
+    }
+
+    private void clearSwitchOff()
+    {
+        offKey = "";
+        offFaces = List.of();
+    }
 
     public GlassBaseBlockEntity(BlockPos pos, BlockState state)
     {
@@ -137,6 +208,13 @@ public class GlassBaseBlockEntity extends BlockEntity
         if(lastDraw > 0)
         {
             lastDraw--;
+        }
+        //The switch-off animation is over once the wave has shrunk into the projector, this block is off on the server too,
+        //and the server's own fade timer has run out (blocks far from the projector can hear about the switch-off late).
+        //Until then the block keeps drawing the switch-off, so it cannot flash the old image.
+        if(isSwitchingOff() && !active && fadeoutTime == 0 && isSwitchOffOver())
+        {
+            clearSwitchOff();
         }
     }
 
@@ -322,14 +400,13 @@ public class GlassBaseBlockEntity extends BlockEntity
         sync();
     }
 
-    /** Saves the block entity and sends the new state to clients (1.12's notifyBlockUpdate). */
+    /** Saves the block entity and sends the new state to clients (1.12's notifyBlockUpdate, without a block update). */
     public void sync()
     {
         setChanged();
         if(level != null && !level.isClientSide)
         {
-            BlockState state = getBlockState();
-            level.sendBlockUpdated(getBlockPos(), state, state, 3);
+            GlassUtil.sendToTracking(this);
         }
     }
 
@@ -348,6 +425,7 @@ public class GlassBaseBlockEntity extends BlockEntity
     @Override
     protected void loadAdditional(ValueInput input)
     {
+        boolean wasActive = active;
         super.loadAdditional(input);
         activeFaces = new ArrayList<>(input.read("activeFaces", Direction.CODEC.listOf()).orElse(List.of()));
         active = input.getBooleanOr("active", false);
@@ -355,6 +433,11 @@ public class GlassBaseBlockEntity extends BlockEntity
         distance = input.getIntOr("distance", 0);
         propagateTime = input.getIntOr("propagateTime", 0);
         fadeoutTime = input.getIntOr("fadeoutTime", 0);
+        if(level != null && level.isClientSide && active && !wasActive && fadeoutTime > 0)
+        {
+            onStart = level.getGameTime(); //just switched on (not a screen that was already on when the chunk loaded)
+            clearSwitchOff(); //switched back on: forget any switch-off still playing (a lever flicked quickly)
+        }
         onClientDataReceived();
     }
 

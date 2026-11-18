@@ -27,6 +27,28 @@ public final class GlassUtil
         return placer.getDirection().getOpposite();
     }
 
+    /**
+     * Sends a block entity's data to the players that have its chunk loaded. Unlike Level#sendBlockUpdated this sends no
+     * block update, so clients do not rebuild the chunk section's geometry each time (which made screens stutter while
+     * they switched on or off, as every glass block changes several times).
+     */
+    public static void sendToTracking(net.minecraft.world.level.block.entity.BlockEntity blockEntity)
+    {
+        if(!(blockEntity.getLevel() instanceof net.minecraft.server.level.ServerLevel))
+        {
+            return;
+        }
+        var packet = blockEntity.getUpdatePacket();
+        if(packet == null)
+        {
+            return;
+        }
+        for(net.minecraft.server.level.ServerPlayer player : net.fabricmc.fabric.api.networking.v1.PlayerLookup.tracking(blockEntity))
+        {
+            player.connection.send(packet);
+        }
+    }
+
     public static float interpolateRotation(float prev, float current, float partialTick)
     {
         return prev + Mth.wrapDegrees(current - prev) * partialTick;

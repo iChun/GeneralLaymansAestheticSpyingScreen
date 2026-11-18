@@ -13,6 +13,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import ryzlar.glass.Glass;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
+import ryzlar.glass.blockentity.GlassSceneSelectorBlockEntity;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.blockentity.GlassWirelessBlockEntity;
 
@@ -159,6 +160,43 @@ public final class GlassNetworking
         }
     }
 
+    /** Turns a projector's cloak mode on or off, and sets how many blocks behind the screen it hides. */
+    public record ConfigureCloak(BlockPos pos, boolean cloak, int depth) implements CustomPacketPayload
+    {
+        public static final Type<ConfigureCloak> TYPE = new Type<>(Glass.id("configure_cloak"));
+        public static final StreamCodec<ByteBuf, ConfigureCloak> CODEC = StreamCodec.composite(
+                BlockPos.STREAM_CODEC, ConfigureCloak::pos,
+                ByteBufCodecs.BOOL, ConfigureCloak::cloak,
+                ByteBufCodecs.VAR_INT, ConfigureCloak::depth,
+                ConfigureCloak::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type()
+        {
+            return TYPE;
+        }
+    }
+
+    /** What the scene selector panel asks for. */
+    public enum SelectorOp { LINK, ADD, REMOVE, UP, DOWN, SHOW }
+
+    public record SelectorAction(BlockPos pos, int op, int index, String channelId) implements CustomPacketPayload
+    {
+        public static final Type<SelectorAction> TYPE = new Type<>(Glass.id("selector_action"));
+        public static final StreamCodec<ByteBuf, SelectorAction> CODEC = StreamCodec.composite(
+                BlockPos.STREAM_CODEC, SelectorAction::pos,
+                ByteBufCodecs.VAR_INT, SelectorAction::op,
+                ByteBufCodecs.VAR_INT, SelectorAction::index,
+                SHORT_STRING, SelectorAction::channelId,
+                SelectorAction::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type()
+        {
+            return TYPE;
+        }
+    }
+
     /** Links a wireless extension to a projector. */
     public record SetProjector(BlockPos wirelessPos, BlockPos projectorPos) implements CustomPacketPayload
     {
@@ -199,11 +237,15 @@ public final class GlassNetworking
         PayloadTypeRegistry.playC2S().register(TerminalAction.TYPE, TerminalAction.CODEC);
         PayloadTypeRegistry.playC2S().register(ConfigureProjector.TYPE, ConfigureProjector.CODEC);
         PayloadTypeRegistry.playC2S().register(SetProjector.TYPE, SetProjector.CODEC);
+        PayloadTypeRegistry.playC2S().register(ConfigureCloak.TYPE, ConfigureCloak.CODEC);
+        PayloadTypeRegistry.playC2S().register(SelectorAction.TYPE, SelectorAction.CODEC);
         PayloadTypeRegistry.playC2S().register(WirelessOrder.TYPE, WirelessOrder.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(NetAction.TYPE, (payload, context) -> handleAction(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(TerminalAction.TYPE, (payload, context) -> handleTerminal(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(ConfigureProjector.TYPE, (payload, context) -> handleConfigureProjector(context.player(), payload));
+        ServerPlayNetworking.registerGlobalReceiver(ConfigureCloak.TYPE, (payload, context) -> handleConfigureCloak(context.player(), payload));
+        ServerPlayNetworking.registerGlobalReceiver(SelectorAction.TYPE, (payload, context) -> handleSelector(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(SetProjector.TYPE, (payload, context) -> handleSetProjector(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(WirelessOrder.TYPE, (payload, context) -> handleWirelessOrder(context.player(), payload));
 
@@ -277,15 +319,78 @@ public final class GlassNetworking
             reply(player, GlassNetworkManager.Result.fail("glass.msg.noAccess"));
             return;
         }
-        if(projector.active && !payload.channelId().equals(projector.channelId))
+        //Switching while the projector is on is fine: the screen stays up and the new feed wipes over the old one.
+        showChannel(projector, data, payload.channelId(), channel == null ? "" : channel.name);
+        reply(player, GlassNetworkManager.Result.ok("glass.msg.projectorSet", projector.channelName));
+    }
+
+    /** Points a projector at a channel (leaving cloak mode). An empty id clears it, which switches the screen off. */
+    public static void showChannel(GlassProjectorBlockEntity projector, GlassNetworkData data, String channelId, String channelName)
+    {
+        projector.cloak = false;
+        projector.channelId = channelId;
+        projector.channelName = channelName;
+        if(projector.active && channelId.isEmpty())
         {
-            reply(player, GlassNetworkManager.Result.fail("glass.msg.powerDown"));
+            projector.turnOff();
+        }
+        projector.resolveCamera(data, true);
+    }
+
+    private static void handleSelector(ServerPlayer player, SelectorAction payload)
+    {
+        ServerLevel level = player.level();
+        if(payload.op() < 0 || payload.op() >= SelectorOp.values().length || !canReach(player, payload.pos())
+                || !(level.getBlockEntity(payload.pos()) instanceof GlassSceneSelectorBlockEntity selector))
+        {
             return;
         }
-        projector.channelId = payload.channelId();
-        projector.channelName = channel == null ? "" : channel.name;
-        projector.resolveCamera(data, true);
-        reply(player, GlassNetworkManager.Result.ok("glass.msg.projectorSet", projector.channelName));
+        switch(SelectorOp.values()[payload.op()])
+        {
+            case LINK -> reply(player, selector.linkNearest()
+                    ? GlassNetworkManager.Result.ok("glass.msg.selectorLinked", "")
+                    : GlassNetworkManager.Result.fail("glass.msg.noProjectorNear"));
+            case ADD -> {
+                GlassNetworkData.Channel channel = GlassNetworkManager.data(level.getServer()).channels.get(payload.channelId());
+                if(channel == null || !channel.hasAccess(player.getUUID()))
+                {
+                    reply(player, GlassNetworkManager.Result.fail("glass.msg.noAccess"));
+                }
+                else if(!selector.addScene(channel.id, channel.name))
+                {
+                    reply(player, GlassNetworkManager.Result.fail("glass.msg.sceneNotAdded"));
+                }
+                else
+                {
+                    reply(player, GlassNetworkManager.Result.ok("glass.msg.sceneAdded", channel.name));
+                }
+            }
+            case REMOVE -> selector.removeScene(payload.index());
+            case UP -> selector.moveScene(payload.index(), -1);
+            case DOWN -> selector.moveScene(payload.index(), 1);
+            case SHOW -> {
+                if(!selector.showScene(payload.index()))
+                {
+                    reply(player, GlassNetworkManager.Result.fail(selector.projector() == null ? "glass.msg.selectorNoProjector" : "glass.msg.sceneGone"));
+                }
+            }
+        }
+    }
+
+    private static void handleConfigureCloak(ServerPlayer player, ConfigureCloak payload)
+    {
+        ServerLevel level = player.level();
+        if(!canReach(player, payload.pos()) || !(level.getBlockEntity(payload.pos()) instanceof GlassProjectorBlockEntity projector))
+        {
+            return;
+        }
+        projector.cloak = payload.cloak();
+        projector.cloakDepth = Math.clamp(payload.depth(), 1, GlassProjectorBlockEntity.MAX_CLOAK_DEPTH);
+        if(projector.active && !projector.hasFeed())
+        {
+            projector.turnOff();
+        }
+        projector.sync();
     }
 
     private static void handleSetProjector(ServerPlayer player, SetProjector payload)

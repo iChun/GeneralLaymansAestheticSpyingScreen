@@ -2,14 +2,18 @@ package ryzlar.glass.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import ryzlar.glass.GlassClientBridge;
 import ryzlar.glass.blockentity.GlassBaseBlockEntity;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
+import ryzlar.glass.blockentity.GlassSceneSelectorBlockEntity;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
 import ryzlar.glass.blockentity.GlassWirelessBlockEntity;
 import ryzlar.glass.client.gui.CameraScreen;
 import ryzlar.glass.client.gui.ProjectorScreen;
+import ryzlar.glass.client.gui.SceneSelectorScreen;
 import ryzlar.glass.client.gui.WirelessProjectorScreen;
 import ryzlar.glass.client.render.SpyViewRenderer;
 
@@ -92,9 +96,39 @@ public final class GlassClientState implements GlassClientBridge
     }
 
     @Override
+    public void openSceneSelectorScreen(GlassSceneSelectorBlockEntity selector)
+    {
+        Minecraft.getInstance().setScreen(new SceneSelectorScreen(selector));
+    }
+
+    @Override
     public void onGlassClicked(BlockPos pos)
     {
         clickedPos = pos.immutable();
+        punch(pos);
+    }
+
+    /** A punch on a screen: where it hit, and when. The ripple spreads out from there across the whole screen. */
+    public record Punch(Vec3 point, long time) {}
+
+    private final Map<String, Punch> punches = new HashMap<>();
+    private static final int PUNCH_REPEAT_TICKS = 10;
+
+    private void punch(BlockPos pos)
+    {
+        Minecraft mc = Minecraft.getInstance();
+        if(mc.level == null || !(mc.level.getBlockEntity(pos) instanceof GlassBaseBlockEntity base) || !base.active)
+        {
+            return;
+        }
+        Vec3 point = mc.hitResult instanceof BlockHitResult hit && hit.getBlockPos().equals(pos) ? hit.getLocation() : Vec3.atCenterOf(pos);
+        punches.put(base.channel, new Punch(point, mc.level.getGameTime()));
+    }
+
+    @Nullable
+    public Punch punchFor(String key)
+    {
+        return punches.get(key);
     }
 
     // ---- Bridge: block entity registration ----
@@ -112,6 +146,10 @@ public final class GlassClientState implements GlassClientBridge
         if(current.sameAs(wanted))
         {
             return;
+        }
+        if(glass instanceof GlassProjectorBlockEntity projector && !projector.active && !current.channel.isEmpty() && wanted.channel.isEmpty())
+        {
+            startSwitchOff(current.channel, projector);
         }
         unregister(glass, current);
         register(glass, wanted);
@@ -157,6 +195,10 @@ public final class GlassClientState implements GlassClientBridge
             return;
         }
         glassRegistrations.put(glass, registration);
+        if(glass instanceof GlassProjectorBlockEntity)
+        {
+            cancelSwitchOff(registration.channel); //switched back on before the animation finished
+        }
         addGlass(glass, registration.channel);
         for(GlassWirelessBlockEntity wireless : registration.wireless)
         {
@@ -203,7 +245,10 @@ public final class GlassClientState implements GlassClientBridge
         if(bases.isEmpty())
         {
             activeGlass.remove(channel);
-            releasePlacement(channel);
+            if(!switchOffs.containsKey(channel)) //otherwise the camera image is kept until the switch-off animation is done
+            {
+                releasePlacement(channel);
+            }
         }
         else
         {
@@ -226,11 +271,167 @@ public final class GlassClientState implements GlassClientBridge
         prewarmTicks.put(channel, PREWARM_TICKS);
     }
 
+    /** A screen switching off: its blocks, and the game time its animation is over. */
+    private record SwitchOff(List<GlassBaseBlockEntity> blocks, long until) {}
+
+    /**
+     * A screen switching feed (scene, camera or cloak) while on: the new image wipes over the old one in a wave from the
+     * projector. {@code oldCloak}: the old image is a cloak (one view per side).
+     */
+    public record Transition(long start, float radius, long until, boolean oldCloak)
+    {
+        public float waveRadius(long gameTime, float partialTick)
+        {
+            return (gameTime - start + partialTick) * GlassBaseBlockEntity.WAVE_SPEED;
+        }
+    }
+
+    private final Map<String, Transition> transitions = new HashMap<>();
+
+    @Nullable
+    public Transition transitionFor(String screen)
+    {
+        return transitions.get(screen);
+    }
+
+    /** How far the wave must travel to cover the screen (block corners and pixels spilling past the front included). */
+    private float coverRadius(String key, GlassProjectorBlockEntity master)
+    {
+        double furthest = 0D;
+        for(GlassBaseBlockEntity base : getActiveGlass(key))
+        {
+            furthest = Math.max(furthest, Math.sqrt(base.getBlockPos().distSqr(master.getBlockPos())));
+        }
+        for(BlockPos pos : master.wirelessPos)
+        {
+            furthest = Math.max(furthest, Math.sqrt(pos.distSqr(master.getBlockPos())));
+        }
+        return (float)furthest + 0.75F + 0.6F;
+    }
+
+    /** The screen's feed changed while on: keep the old image and let the new one wipe over it. */
+    private void startTransition(String key, GlassProjectorBlockEntity master, boolean oldCloak)
+    {
+        if(master.getLevel() == null)
+        {
+            return;
+        }
+        long now = master.getLevel().getGameTime();
+        float radius = coverRadius(key, master);
+        long until = now + (long)Math.ceil(radius / GlassBaseBlockEntity.WAVE_SPEED) + 2;
+        if(SpyViewRenderer.INSTANCE.retire(key, until))
+        {
+            transitions.put(key, new Transition(now, radius, until, oldCloak));
+        }
+        else
+        {
+            transitions.remove(key);
+            master.onStart = now; //nothing to wipe over: just play the turn-on wave
+        }
+    }
+
+    private void endTransition(String key)
+    {
+        if(transitions.remove(key) != null)
+        {
+            SpyViewRenderer.INSTANCE.releaseRetired(key);
+        }
+    }
+
+    private final Map<String, SwitchOff> switchOffs = new HashMap<>();
+
+    /**
+     * The projector of this screen was switched off: the turn-on wave in reverse. The whole screen keeps showing the
+     * camera while one wave shrinks from the outermost glass back into the projector; behind it the glass is plain again.
+     */
+    private void startSwitchOff(String key, GlassProjectorBlockEntity master)
+    {
+        if(master.getLevel() == null)
+        {
+            return;
+        }
+        long now = master.getLevel().getGameTime();
+        List<GlassBaseBlockEntity> blocks = new ArrayList<>();
+        double furthest = 0D;
+        for(GlassBaseBlockEntity base : getActiveGlass(key))
+        {
+            if(base == master || (base.active && base.channel.equals(key)))
+            {
+                blocks.add(base);
+                furthest = Math.max(furthest, Math.sqrt(base.getBlockPos().distSqr(master.getBlockPos())));
+            }
+        }
+        if(!blocks.contains(master))
+        {
+            blocks.add(master);
+        }
+        if(master.wirelessPos.size() > 1)
+        {
+            for(BlockPos pos : master.wirelessPos)
+            {
+                furthest = Math.max(furthest, Math.sqrt(pos.distSqr(master.getBlockPos())));
+            }
+        }
+        //Start where every pixel is still showing (block corners and pixels spilling past the front included), or where
+        //the turn-on wave had got to if it is switched off before it finished.
+        float radius = (float)furthest + 0.75F + 0.6F;
+        radius = Math.min(radius, master.onRadius(0F));
+        for(GlassBaseBlockEntity base : blocks)
+        {
+            base.offKey = key;
+            base.offStart = now;
+            base.offRadius = radius;
+            base.offFaces = List.copyOf(base.activeFaces);
+            base.offWireless = base instanceof GlassProjectorBlockEntity projector && !projector.wirelessPos.isEmpty();
+            base.offCloak = master.cloak;
+        }
+        endTransition(key);
+        long until = now + (long)Math.ceil(radius / GlassBaseBlockEntity.WAVE_SPEED) + 2;
+        switchOffs.put(key, new SwitchOff(blocks, until));
+        SpyViewRenderer.INSTANCE.keepAlive(key, until);
+    }
+
+    private void cancelSwitchOff(String key)
+    {
+        SwitchOff switchOff = switchOffs.remove(key);
+        if(switchOff != null)
+        {
+            for(GlassBaseBlockEntity base : switchOff.blocks())
+            {
+                base.offKey = "";
+                base.offFaces = List.of();
+            }
+        }
+    }
+
     private void releasePlacement(String channel)
     {
         terminalPlacements.remove(channel);
         terminalPlacementCreationTimeout.remove(channel);
         SpyViewRenderer.INSTANCE.release(channel);
+    }
+
+    /**
+     * True if this block lies in the part of the world a cloak hides, and the eye is outside it: its selection outline
+     * would give the cloak away.
+     */
+    public boolean isHiddenByCloak(BlockPos pos, Vec3 eye)
+    {
+        for(TerminalPlacement placement : terminalPlacements.values())
+        {
+            if(!placement.cloak || !placement.isValid())
+            {
+                continue;
+            }
+            for(TerminalPlacement side : placement.cloakSides())
+            {
+                if(side.hides(pos) && !side.contains(eye))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public Set<GlassBaseBlockEntity> getActiveGlass(String channel)
@@ -243,12 +444,16 @@ public final class GlassClientState implements GlassClientBridge
     @Nullable
     public TerminalPlacement getTerminalPlacement(String channel)
     {
-        if(terminalPlacementCreationTimeout.containsKey(channel))
+        //Switching off: the placement (and the camera image) must stay until the wave is back in the projector. Looking
+        //it up now would find it invalid (the projector is off) and release it, and the screen vanished at once; this
+        //happened when it was switched off within a few seconds of switching on, while the view was still being prewarmed.
+        if(switchOffs.containsKey(channel) || terminalPlacementCreationTimeout.containsKey(channel))
         {
             return null;
         }
         TerminalPlacement existing = terminalPlacements.get(channel);
         boolean switchedCamera = false;
+        boolean oldCloak = false;
         if(existing != null)
         {
             if(existing.isValid())
@@ -257,9 +462,10 @@ public final class GlassClientState implements GlassClientBridge
             }
             if(existing.isSameScreen())
             {
-                //Same projector, other camera (cycling or reconfigured): keep the view, just move it.
+                //Same screen, other feed (another scene, camera or cloak): the new feed wipes over the old one.
                 terminalPlacements.remove(channel);
                 switchedCamera = true;
+                oldCloak = existing.cloak;
             }
             else
             {
@@ -278,28 +484,25 @@ public final class GlassClientState implements GlassClientBridge
             }
         }
         Minecraft mc = Minecraft.getInstance();
-        if(master != null && master.camValid && mc.level != null && master.camDimension.equals(mc.level.dimension()))
+        if(master != null && mc.level != null && (master.cloak || master.camValid && master.camDimension.equals(mc.level.dimension())))
         {
             TerminalPlacement placement = new TerminalPlacement(channel, master);
             terminalPlacements.put(channel, placement);
             if(switchedCamera)
             {
-                flash(channel);
+                startTransition(channel, master, oldCloak);
             }
             return placement;
+        }
+        if(switchedCamera)
+        {
+            //The new feed has no camera (offline, or in another dimension): no image to wipe in, so drop the old one.
+            endTransition(channel);
+            SpyViewRenderer.INSTANCE.release(channel);
         }
 
         terminalPlacementCreationTimeout.put(channel, 13); //13 tick wait before trying again.
         return null;
-    }
-
-    /** The white flash 1.12 showed when glass turned on, used when a screen switches camera. */
-    private void flash(String channel)
-    {
-        for(GlassBaseBlockEntity base : getActiveGlass(channel))
-        {
-            base.fadeoutTime = GlassBaseBlockEntity.FADEOUT_TIME;
-        }
     }
 
     public void clientTick(Minecraft mc)
@@ -312,12 +515,11 @@ public final class GlassClientState implements GlassClientBridge
         {
             if(mc.level.getBlockEntity(clickedPos) instanceof GlassBaseBlockEntity base && base.active && mc.gameMode != null && mc.gameMode.isDestroying())
             {
-                if(base.fadeoutTime < GlassBaseBlockEntity.FADEOUT_TIME - GlassBaseBlockEntity.PROPAGATE_TIME)
+                //Keep punching: a new ripple every half second.
+                Punch last = punches.get(base.channel);
+                if(last == null || mc.level.getGameTime() - last.time() >= PUNCH_REPEAT_TICKS)
                 {
-                    base.fadeoutTime = GlassBaseBlockEntity.FADEOUT_TIME;
-                    base.fadePropagate = GlassBaseBlockEntity.PROPAGATE_TIME;
-                    base.fadeDistance = 2;
-                    base.fadePropagate();
+                    punch(clickedPos);
                 }
             }
             else
@@ -337,6 +539,30 @@ public final class GlassClientState implements GlassClientBridge
             }
         }
 
+        long now = mc.level.getGameTime();
+        Iterator<Map.Entry<String, SwitchOff>> offs = switchOffs.entrySet().iterator();
+        while(offs.hasNext())
+        {
+            Map.Entry<String, SwitchOff> e = offs.next();
+            if(now > e.getValue().until())
+            {
+                offs.remove();
+                if(!activeGlass.containsKey(e.getKey()))
+                {
+                    releasePlacement(e.getKey());
+                }
+            }
+        }
+
+        transitions.entrySet().removeIf(e -> {
+            if(now > e.getValue().until())
+            {
+                SpyViewRenderer.INSTANCE.releaseRetired(e.getKey());
+                return true;
+            }
+            return false;
+        });
+
         Iterator<Map.Entry<String, Integer>> prewarm = prewarmTicks.entrySet().iterator();
         while(prewarm.hasNext())
         {
@@ -348,7 +574,7 @@ public final class GlassClientState implements GlassClientBridge
                 continue;
             }
             TerminalPlacement placement = getTerminalPlacement(e.getKey());
-            if(placement != null)
+            if(placement != null && !placement.cloak) //a cloak has a view per side, asked for by the glass as it is seen
             {
                 SpyViewRenderer.INSTANCE.request(placement);
             }
@@ -381,6 +607,9 @@ public final class GlassClientState implements GlassClientBridge
         terminalPlacements.clear();
         terminalPlacementCreationTimeout.clear();
         prewarmTicks.clear();
+        switchOffs.clear();
+        transitions.clear();
+        punches.clear();
         loadedProjectors.clear();
         glassRegistrations.clear();
         SpyViewRenderer.INSTANCE.releaseAll();
