@@ -254,7 +254,7 @@ public final class GlassNetworking
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> GlassNetworkManager.onServerStopped());
     }
 
-    private static void reply(ServerPlayer player, GlassNetworkManager.Result result)
+    public static void reply(ServerPlayer player, GlassNetworkManager.Result result)
     {
         ServerPlayNetworking.send(player, new ActionResult(result.ok(), result.message(), result.arg()));
         if(result.ok())

@@ -31,6 +31,10 @@ public interface GlassClientBridge
 
     default void openSceneSelectorScreen(GlassSceneSelectorBlockEntity selector) {}
 
+    default void openHoloScannerScreen(ryzlar.glass.holo.HoloScannerBlockEntity scanner) {}
+
+    default void openHoloProjectorScreen(ryzlar.glass.holo.HoloProjectorBlockEntity projector) {}
+
     default void onGlassClicked(BlockPos pos) {}
 
     /** Called every client tick by each glass block entity so the client knows which glass belongs to which channel. */

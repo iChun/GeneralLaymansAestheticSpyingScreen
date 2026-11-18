@@ -86,6 +86,54 @@ public final class GlassRenderTypes
                     .setLightmapState(RenderStateShard.LIGHTMAP)
                     .createCompositeState(false));
 
+    /**
+     * Holograms, with the nano wave: glowing, see-through block textures sorted back to front (BLUE: in cyan only), or
+     * SOLID: opaque, like real blocks.
+     */
+    private static RenderPipeline hologramPipeline(String name, String define)
+    {
+        RenderPipeline.Builder builder = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET, RenderPipelines.GLOBALS_SNIPPET)
+                .withLocation(Glass.id("pipeline/" + name))
+                .withVertexShader(Glass.id("core/glass_holo"))
+                .withFragmentShader(Glass.id("core/glass_holo"))
+                .withSampler("Sampler0")
+                .withVertexFormat(DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS)
+                .withCull(true);
+        if(define.equals("SOLID"))
+        {
+            builder.withShaderDefine("SOLID");
+        }
+        else
+        {
+            builder.withBlend(com.mojang.blaze3d.pipeline.BlendFunction.TRANSLUCENT).withDepthWrite(false);
+            if(!define.isEmpty())
+            {
+                builder.withShaderDefine(define);
+            }
+        }
+        return builder.build();
+    }
+
+    public static final RenderPipeline HOLOGRAM_PIPELINE = hologramPipeline("glass_hologram", "");
+    public static final RenderPipeline HOLOGRAM_BLUE_PIPELINE = hologramPipeline("glass_hologram_blue", "BLUE");
+    public static final RenderPipeline HOLOGRAM_SOLID_PIPELINE = hologramPipeline("glass_hologram_solid", "SOLID");
+    private static final RenderType HOLOGRAM = hologramType("glass_hologram", HOLOGRAM_PIPELINE, true);
+    private static final RenderType HOLOGRAM_BLUE = hologramType("glass_hologram_blue", HOLOGRAM_BLUE_PIPELINE, true);
+    private static final RenderType HOLOGRAM_SOLID = hologramType("glass_hologram_solid", HOLOGRAM_SOLID_PIPELINE, false);
+
+    private static RenderType hologramType(String name, RenderPipeline pipeline, boolean sort)
+    {
+        return RenderType.create(name, 1536, false, sort, pipeline, RenderType.CompositeState.builder()
+                .setTextureState(new RenderStateShard.TextureStateShard(TextureAtlas.LOCATION_BLOCKS, true))
+                .createCompositeState(false));
+    }
+
+    /** 0: hologram, 1: holo blue, 2: solid. */
+    public static RenderType hologram(int look)
+    {
+        return look == 1 ? HOLOGRAM_BLUE : look == 2 ? HOLOGRAM_SOLID : HOLOGRAM;
+    }
+
     private static final Map<ResourceLocation, RenderType> SCREENS = new HashMap<>();
     private static final Map<ResourceLocation, RenderType> SCREENS_NO_CULL = new HashMap<>();
     private record WipeKey(ResourceLocation image, ResourceLocation old, boolean cull) {}

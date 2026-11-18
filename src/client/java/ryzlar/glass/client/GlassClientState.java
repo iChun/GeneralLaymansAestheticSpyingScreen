@@ -102,6 +102,18 @@ public final class GlassClientState implements GlassClientBridge
     }
 
     @Override
+    public void openHoloScannerScreen(ryzlar.glass.holo.HoloScannerBlockEntity scanner)
+    {
+        Minecraft.getInstance().setScreen(new ryzlar.glass.client.holo.HoloScannerScreen(scanner));
+    }
+
+    @Override
+    public void openHoloProjectorScreen(ryzlar.glass.holo.HoloProjectorBlockEntity projector)
+    {
+        Minecraft.getInstance().setScreen(new ryzlar.glass.client.holo.HoloProjectorScreen(projector));
+    }
+
+    @Override
     public void onGlassClicked(BlockPos pos)
     {
         clickedPos = pos.immutable();

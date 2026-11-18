@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    " A ",
+    "GOG",
+    "III"
+  ],
+  "key": {
+    "A": "minecraft:amethyst_shard",
+    "G": "minecraft:glass",
+    "O": "minecraft:observer",
+    "I": "minecraft:iron_ingot"
+  },
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:holo_scanner",
+    "count": 1
+  }
+}

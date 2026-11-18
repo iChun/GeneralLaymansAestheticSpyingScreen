@@ -9,6 +9,18 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ryzlar.glass.GlassRegistry;
+import ryzlar.glass.client.holo.HoloProjectorScreen;
+import ryzlar.glass.client.holo.HoloScannerScreen;
+import ryzlar.glass.holo.HoloDroneEntity;
+import ryzlar.glass.holo.HoloNetworking;
+import ryzlar.glass.holo.HoloProjectionData;
+import ryzlar.glass.holo.HoloProjectorBlockEntity;
+import ryzlar.glass.holo.HoloScannerBlockEntity;
+import ryzlar.glass.holo.ProjectionRef;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
 import ryzlar.glass.blockentity.GlassBaseBlockEntity;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
 import ryzlar.glass.blockentity.GlassSceneSelectorBlockEntity;
@@ -41,6 +53,8 @@ public class GlassClientGameTest implements FabricClientGameTest
     private static final BlockPos LEVER = new BlockPos(0, -58, -1);
     private static final BlockPos CLOAK_PROJECTOR = new BlockPos(-37, -60, -40);
     private static final BlockPos SELECTOR = new BlockPos(5, -60, 3);
+    private static final BlockPos HOLO_SCANNER = new BlockPos(58, -60, -26);
+    private static final BlockPos HOLO_PROJECTOR = new BlockPos(61, -60, -40);
     private static final BlockPos GOLD_CAMERA = new BlockPos(40, -59, 0);
     private static final BlockPos DIAMOND_CAMERA = new BlockPos(80, -59, 0);
     private static final BlockPos SPARE_TERMINAL = new BlockPos(5, -60, 6);
@@ -467,6 +481,200 @@ public class GlassClientGameTest implements FabricClientGameTest
             context.setScreen(() -> null);
             server.runOnServer(s -> ((GlassSceneSelectorBlockEntity)s.overworld().getBlockEntity(SELECTOR)).showScene(0));
             context.waitTicks(30);
+
+            //Holograms: scan a little tower into a crystal, then project it.
+            server.runCommand("fill 52 -61 -50 70 -61 -24 minecraft:white_concrete");
+            server.runCommand("fill 60 -60 -28 64 -60 -24 minecraft:stone_bricks");
+            server.runCommand("fill 61 -59 -27 63 -57 -25 minecraft:gold_block");
+            server.runCommand("setblock 62 -56 -26 minecraft:glowstone");
+            server.runCommand("fill 60 -59 -28 60 -57 -28 minecraft:red_wool");
+            server.runCommand("fill 64 -59 -24 64 -57 -24 minecraft:blue_wool");
+            server.runCommand("setblock 58 -60 -26 generallaymansaestheticspyingscreen:holo_scanner");
+            server.runCommand("tp @p 61.5 -60 -15.5 180 10");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(5);
+            server.runOnServer(s -> ((HoloScannerBlockEntity)s.overworld().getBlockEntity(HOLO_SCANNER)).configure(2, 0, -2, 5, 5, 5, "Tower"));
+            context.waitTicks(5);
+            server.runCommand("give @p minecraft:amethyst_shard 4");
+            context.waitTicks(2);
+            HoloScannerBlockEntity clientScanner = context.computeOnClient(mc -> (HoloScannerBlockEntity)mc.level.getBlockEntity(HOLO_SCANNER));
+            context.setScreen(() -> new HoloScannerScreen(clientScanner));
+            context.waitTicks(15);
+            context.takeScreenshot("gui_holo_scanner");
+            context.setScreen(() -> null);
+            context.waitTicks(5);
+            context.takeScreenshot("holo_scan_grid");
+            context.runOnClient(mc -> ClientPlayNetworking.send(new HoloNetworking.ScannerScan(HOLO_SCANNER)));
+            context.waitTicks(10);
+            boolean gotCrystal = server.computeOnServer(s -> {
+                ServerPlayer p = player(s);
+                for(int i = 0; i < p.getInventory().getContainerSize(); i++)
+                {
+                    ProjectionRef ref = p.getInventory().getItem(i).get(GlassRegistry.PROJECTION);
+                    if(ref != null && ref.name().equals("Tower") && ref.sizeX() == 5 && HoloProjectionData.find(s, ref.id()) != null)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            });
+            check(gotCrystal, "scanning gives a crystal holding the projection");
+
+            //The holo projector, with the crystal in it, powered.
+            server.runCommand("setblock 61 -60 -40 generallaymansaestheticspyingscreen:holo_projector");
+            context.waitTicks(2);
+            server.runOnServer(s -> {
+                ServerPlayer p = player(s);
+                for(int i = 0; i < p.getInventory().getContainerSize(); i++)
+                {
+                    ItemStack stack = p.getInventory().getItem(i);
+                    if(stack.get(GlassRegistry.PROJECTION) != null)
+                    {
+                        ((HoloProjectorBlockEntity)s.overworld().getBlockEntity(HOLO_PROJECTOR)).putCrystal(stack);
+                        stack.shrink(1);
+                        break;
+                    }
+                }
+            });
+            server.runCommand("setblock 61 -61 -40 minecraft:redstone_block");
+            //Look from the other side: the hologram in front, the real tower behind it.
+            server.runCommand("tp @p 61.5 -59 -53.5 0 12");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(40);
+            check(server.computeOnServer(s -> ((HoloProjectorBlockEntity)s.overworld().getBlockEntity(HOLO_PROJECTOR)).active), "holo projector on with a crystal");
+            context.takeScreenshot("holo_no_emitters");
+            //Emitters in four different corners: now every side is lit.
+            server.runCommand("setblock 57 -60 -44 generallaymansaestheticspyingscreen:holo_emitter[facing=up]");
+            server.runCommand("setblock 65 -60 -36 generallaymansaestheticspyingscreen:holo_emitter[facing=up]");
+            server.runCommand("setblock 57 -53 -36 generallaymansaestheticspyingscreen:holo_emitter[facing=down]");
+            server.runCommand("setblock 65 -53 -44 generallaymansaestheticspyingscreen:holo_emitter[facing=down]");
+            context.waitTicks(2);
+            check(server.computeOnServer(s -> ((HoloProjectorBlockEntity)s.overworld().getBlockEntity(HOLO_PROJECTOR)).linkEmitters()) == 4, "four emitters linked");
+            context.waitTicks(30);
+            context.takeScreenshot("holo_four_emitters");
+            //Switching off and on: the nano wave shrinks back into the projector, then grows out again.
+            server.runCommand("setblock 61 -61 -40 minecraft:white_concrete");
+            int holoWaited = 0;
+            for(int tick : new int[] { 4, 10, 16 })
+            {
+                context.waitTicks(tick - holoWaited);
+                holoWaited = tick;
+                context.takeScreenshot("holo_off_tick_" + (tick < 10 ? "0" : "") + tick);
+            }
+            context.waitTicks(30);
+            server.runCommand("setblock 61 -61 -40 minecraft:redstone_block");
+            holoWaited = 0;
+            for(int tick : new int[] { 4, 9, 15, 24 })
+            {
+                context.waitTicks(tick - holoWaited);
+                holoWaited = tick;
+                context.takeScreenshot("holo_on_tick_" + (tick < 10 ? "0" : "") + tick);
+            }
+            context.waitTicks(20);
+            server.runCommand("setblock 57 -53 -36 minecraft:air");
+            server.runCommand("setblock 65 -53 -44 minecraft:air");
+            context.waitTicks(30);
+            context.takeScreenshot("holo_two_bottom_emitters");
+            server.runCommand("setblock 57 -53 -36 generallaymansaestheticspyingscreen:holo_emitter[facing=down]");
+            server.runCommand("setblock 65 -53 -44 generallaymansaestheticspyingscreen:holo_emitter[facing=down]");
+            context.waitTicks(2);
+            server.runOnServer(s -> ((HoloProjectorBlockEntity)s.overworld().getBlockEntity(HOLO_PROJECTOR)).linkEmitters());
+            server.runOnServer(s -> ((HoloProjectorBlockEntity)s.overworld().getBlockEntity(HOLO_PROJECTOR)).configure(1, 0, 1));
+            context.waitTicks(30);
+            context.takeScreenshot("holo_blue_turned");
+            server.runOnServer(s -> ((HoloProjectorBlockEntity)s.overworld().getBlockEntity(HOLO_PROJECTOR)).configure(2, 0, 0));
+            context.waitTicks(30);
+            context.takeScreenshot("holo_solid");
+            server.runOnServer(s -> ((HoloProjectorBlockEntity)s.overworld().getBlockEntity(HOLO_PROJECTOR)).configure(0, 3, 0));
+            context.waitTicks(30);
+            context.takeScreenshot("holo_quarter_scale");
+            HoloProjectorBlockEntity clientHolo = context.computeOnClient(mc -> (HoloProjectorBlockEntity)mc.level.getBlockEntity(HOLO_PROJECTOR));
+            context.setScreen(() -> new HoloProjectorScreen(clientHolo));
+            context.waitTicks(15);
+            context.takeScreenshot("gui_holo_projector");
+            context.setScreen(() -> null);
+            server.runCommand("tp @p 0.5 -60 8.5 180 0");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(20);
+
+            //Holo drone: scan a room by looking around it, then throw the drone to project the room 1:1 elsewhere.
+            server.runCommand("fill 100 -61 -10 106 -56 -4 minecraft:stone_bricks hollow");
+            server.runCommand("fill 103 -59 -10 104 -58 -10 minecraft:glass");
+            server.runCommand("setblock 101 -60 -9 minecraft:bookshelf");
+            server.runCommand("setblock 101 -59 -9 minecraft:bookshelf");
+            server.runCommand("setblock 105 -60 -9 minecraft:crafting_table");
+            server.runCommand("setblock 105 -60 -5 minecraft:red_wool");
+            server.runCommand("setblock 101 -60 -5 minecraft:gold_block");
+            server.runCommand("fill 112 -61 -24 140 -61 12 minecraft:white_concrete");
+            server.runCommand("tp @p 103.5 -60 -6.5 180 0");
+            singleplayer.getClientWorld().waitForChunksRender();
+            server.runCommand("item replace entity @p weapon.mainhand with generallaymansaestheticspyingscreen:holo_drone");
+            context.waitTicks(5);
+            context.runOnClient(mc -> mc.gameMode.useItem(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND));
+            context.waitTicks(3);
+            boolean scanned = false;
+            int look = 0;
+            for(int pitch : new int[] { 0, 45, -45, 70, -70 })
+            {
+                for(int yaw = 0; yaw < 360 && !scanned; yaw += 30)
+                {
+                    server.runCommand("tp @p 103.5 -60 -6.5 " + yaw + " " + pitch);
+                    context.waitTicks(2);
+                    if(++look == 14)
+                    {
+                        context.takeScreenshot("drone_scanning");
+                    }
+                    scanned = server.computeOnServer(s -> player(s).getMainHandItem().get(GlassRegistry.DRONE_SCAN) != null);
+                }
+            }
+            check(scanned, "looking around the room scans it into the drone");
+
+            //Set it down in the open and switch it on: the room builds up around it, slowly, as a solid simulation.
+            server.runCommand("tp @p 126.5 -60 7.5 180 0");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(5);
+            BlockPos ground = new BlockPos(126, -61, 4);
+            context.runOnClient(mc -> mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND,
+                    new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(ground).add(0, 0.5, 0), net.minecraft.core.Direction.UP, ground, false)));
+            context.waitTicks(10);
+            check(server.computeOnServer(s -> !s.overworld().getEntitiesOfClass(HoloDroneEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).isEmpty()),
+                    "the drone is set down on the ground");
+            context.takeScreenshot("drone_on_ground");
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).forEach(HoloDroneEntity::toggle));
+            int droneWaited = 0;
+            for(int tick : new int[] { 20, 45, 100 })
+            {
+                context.waitTicks(tick - droneWaited);
+                droneWaited = tick;
+                context.takeScreenshot("drone_on_tick_" + tick);
+            }
+            server.runCommand("tp @p 126.5 -60 4.5 135 10");
+            context.waitTicks(20);
+            context.takeScreenshot("drone_room_inside");
+            server.runCommand("tp @p 126.5 -60 10.5 180 10");
+            context.waitTicks(10);
+            //Switch it off: the room shrinks back into the drone.
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).forEach(HoloDroneEntity::toggle));
+            context.waitTicks(30);
+            context.takeScreenshot("drone_off_tick_30");
+            context.waitTicks(80);
+            //Pick it up again: it keeps its scan.
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).forEach(d -> d.startPickUp(player(s))));
+            context.waitTicks(5);
+            check(server.computeOnServer(s -> {
+                for(int i = 0; i < player(s).getInventory().getContainerSize(); i++)
+                {
+                    ItemStack stack = player(s).getInventory().getItem(i);
+                    if(stack.is(GlassRegistry.HOLO_DRONE) && stack.get(GlassRegistry.DRONE_SCAN) != null)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }), "the drone is picked up with its scan");
+            server.runCommand("tp @p 0.5 -60 8.5 180 0");
+            singleplayer.getClientWorld().waitForChunksRender();
+            context.waitTicks(20);
 
             //Removing a camera terminal takes the channel's camera offline: at once when broken, and within a second even
             //when the removal skips block entity side effects (as /setblock does).

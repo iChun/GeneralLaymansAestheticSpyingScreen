@@ -9,7 +9,18 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Rarity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
+import ryzlar.glass.holo.DroneScan;
+import ryzlar.glass.holo.HoloBlocks;
+import ryzlar.glass.holo.HoloDroneEntity;
+import ryzlar.glass.holo.HoloDroneItem;
+import ryzlar.glass.holo.HoloProjectorBlockEntity;
+import ryzlar.glass.holo.HoloScannerBlockEntity;
+import ryzlar.glass.holo.ProjectionRef;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
@@ -40,6 +51,24 @@ public final class GlassRegistry
     public static final GlassSceneSelectorBlock GLASS_SCENE_SELECTOR = registerBlock("glass_scene_selector", GlassSceneSelectorBlock::new,
             BlockBehaviour.Properties.ofFullCopy(Blocks.LODESTONE).strength(2.5F).lightLevel(state -> 6));
 
+    public static final HoloBlocks.Scanner HOLO_SCANNER = registerBlock("holo_scanner", HoloBlocks.Scanner::new,
+            BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).strength(3.0F).lightLevel(state -> 5));
+    public static final HoloBlocks.Projector HOLO_PROJECTOR = registerBlock("holo_projector", HoloBlocks.Projector::new,
+            BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).strength(3.0F).lightLevel(state -> 8));
+    public static final HoloBlocks.Emitter HOLO_EMITTER = registerBlock("holo_emitter", HoloBlocks.Emitter::new,
+            BlockBehaviour.Properties.ofFullCopy(Blocks.END_ROD).lightLevel(state -> 10));
+
+    /** What a projection crystal holds. */
+    public static final DataComponentType<ProjectionRef> PROJECTION = Registry.register(BuiltInRegistries.DATA_COMPONENT_TYPE, Glass.id("projection"),
+            DataComponentType.<ProjectionRef>builder().persistent(ProjectionRef.CODEC).networkSynchronized(ProjectionRef.STREAM_CODEC).build());
+    /** A holo drone's room scan. */
+    public static final DataComponentType<DroneScan> DRONE_SCAN = Registry.register(BuiltInRegistries.DATA_COMPONENT_TYPE, Glass.id("drone_scan"),
+            DataComponentType.<DroneScan>builder().persistent(DroneScan.CODEC).networkSynchronized(DroneScan.STREAM_CODEC).build());
+    public static final Item HOLO_DRONE = registerItem("holo_drone", properties -> new HoloDroneItem(properties.stacksTo(1).rarity(Rarity.RARE)));
+    public static final EntityType<HoloDroneEntity> HOLO_DRONE_ENTITY = registerEntity("holo_drone",
+            EntityType.Builder.<HoloDroneEntity>of(HoloDroneEntity::new, MobCategory.MISC).sized(0.5F, 0.5F).clientTrackingRange(10).updateInterval(2));
+    public static final Item PROJECTION_CRYSTAL = registerItem("projection_crystal", properties -> new Item(properties.stacksTo(1).rarity(Rarity.RARE)));
+
     public static final BlockEntityType<GlassBaseBlockEntity> GLASS_EXTENSION_BE = registerBlockEntity("glass_extension",
             FabricBlockEntityTypeBuilder.create(GlassBaseBlockEntity::new, GLASS_EXTENSION).build());
     public static final BlockEntityType<GlassProjectorBlockEntity> GLASS_PROJECTOR_BE = registerBlockEntity("glass_projector",
@@ -50,6 +79,10 @@ public final class GlassRegistry
             FabricBlockEntityTypeBuilder.create(GlassTerminalBlockEntity::new, GLASS_TERMINAL).build());
     public static final BlockEntityType<GlassSceneSelectorBlockEntity> GLASS_SCENE_SELECTOR_BE = registerBlockEntity("glass_scene_selector",
             FabricBlockEntityTypeBuilder.create(GlassSceneSelectorBlockEntity::new, GLASS_SCENE_SELECTOR).build());
+    public static final BlockEntityType<HoloScannerBlockEntity> HOLO_SCANNER_BE = registerBlockEntity("holo_scanner",
+            FabricBlockEntityTypeBuilder.create(HoloScannerBlockEntity::new, HOLO_SCANNER).build());
+    public static final BlockEntityType<HoloProjectorBlockEntity> HOLO_PROJECTOR_BE = registerBlockEntity("holo_projector",
+            FabricBlockEntityTypeBuilder.create(HoloProjectorBlockEntity::new, HOLO_PROJECTOR).build());
 
     public static final SoundEvent SOUND_AMBIENCE = Registry.register(BuiltInRegistries.SOUND_EVENT, Glass.id("amb"), SoundEvent.createVariableRangeEvent(Glass.id("amb")));
 
@@ -70,6 +103,18 @@ public final class GlassRegistry
         return block;
     }
 
+    private static <T extends net.minecraft.world.entity.Entity> EntityType<T> registerEntity(String name, EntityType.Builder<T> builder)
+    {
+        ResourceKey<EntityType<?>> key = ResourceKey.create(Registries.ENTITY_TYPE, Glass.id(name));
+        return Registry.register(BuiltInRegistries.ENTITY_TYPE, key, builder.build(key));
+    }
+
+    private static Item registerItem(String name, Function<Item.Properties, Item> factory)
+    {
+        ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, Glass.id(name));
+        return Registry.register(BuiltInRegistries.ITEM, itemKey, factory.apply(new Item.Properties().setId(itemKey)));
+    }
+
     private static <T extends BlockEntityType<?>> T registerBlockEntity(String name, T type)
     {
         return Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, Glass.id(name), type);
@@ -83,6 +128,10 @@ public final class GlassRegistry
             entries.accept(GLASS_EXTENSION);
             entries.accept(GLASS_TERMINAL);
             entries.accept(GLASS_SCENE_SELECTOR);
+            entries.accept(HOLO_SCANNER);
+            entries.accept(HOLO_PROJECTOR);
+            entries.accept(HOLO_EMITTER);
+            entries.accept(HOLO_DRONE);
         });
     }
 }
