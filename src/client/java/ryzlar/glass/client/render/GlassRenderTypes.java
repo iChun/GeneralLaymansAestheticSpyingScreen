@@ -69,40 +69,22 @@ public final class GlassRenderTypes
      * Cloak ground: block tops lit with the lightmap (so day, night and torches look like the real ground), with a copy
      * of the terrain shader (the text shader reads the lightmap unfiltered, which came out a little brighter).
      */
-    private static RenderPipeline groundPipeline(String name, boolean depthTest)
-    {
-        RenderPipeline.Builder builder = RenderPipeline.builder(RenderPipelines.TEXT_SNIPPET, RenderPipelines.FOG_SNIPPET)
-                .withLocation(Glass.id("pipeline/" + name))
-                .withVertexShader(Glass.id("core/glass_ground"))
-                .withFragmentShader(Glass.id("core/glass_ground"))
-                .withSampler("Sampler0")
-                .withSampler("Sampler2")
-                .withCull(false);
-        if(!depthTest)
-        {
-            builder.withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST).withDepthWrite(false);
-        }
-        return builder.build();
-    }
-
-    private static RenderType groundType(String name, RenderPipeline pipeline)
-    {
-        return RenderType.create(name, 1536, false, false, pipeline, RenderType.CompositeState.builder()
-                //Mipmapped like the terrain, or the ground looks grainier (and lighter) than the real ground around it.
-                .setTextureState(new RenderStateShard.TextureStateShard(TextureAtlas.LOCATION_BLOCKS, true))
-                .setLightmapState(RenderStateShard.LIGHTMAP)
-                .createCompositeState(false));
-    }
-
-    /**
-     * The ground the clip plane cut away (under and beside the hidden part). It is always nearer than anything else the
-     * cloak shows there, so no depth test.
-     */
-    public static final RenderPipeline CLOAK_FLOOR_PIPELINE = groundPipeline("glass_cloak_floor", false);
-    public static final RenderType CLOAK_FLOOR = groundType("glass_cloak_floor", CLOAK_FLOOR_PIPELINE);
-    /** The ground just behind the hidden part, drawn a hair above the real ground (so with the depth test). */
-    public static final RenderPipeline CLOAK_RING_PIPELINE = groundPipeline("glass_cloak_ring", true);
-    public static final RenderType CLOAK_RING = groundType("glass_cloak_ring", CLOAK_RING_PIPELINE);
+    public static final RenderPipeline CLOAK_GROUND_PIPELINE = RenderPipeline.builder(RenderPipelines.TEXT_SNIPPET, RenderPipelines.FOG_SNIPPET)
+            .withLocation(Glass.id("pipeline/glass_cloak_ground"))
+            .withVertexShader(Glass.id("core/glass_ground"))
+            .withFragmentShader(Glass.id("core/glass_ground"))
+            .withShaderDefine("ALPHA_CUTOUT", 0.5F)
+            .withSampler("Sampler0")
+            .withSampler("Sampler2")
+            .withCull(true)
+            .build();
+    /** Cloak ground: the made-up ground under the hidden part, and the real ground beside and just behind it. */
+    public static final RenderType CLOAK_GROUND = RenderType.create("glass_cloak_ground", 1536, false, false, CLOAK_GROUND_PIPELINE,
+            RenderType.CompositeState.builder()
+                    //Mipmapped like the terrain, or the ground looks grainier (and lighter) than the real ground around it.
+                    .setTextureState(new RenderStateShard.TextureStateShard(TextureAtlas.LOCATION_BLOCKS, true))
+                    .setLightmapState(RenderStateShard.LIGHTMAP)
+                    .createCompositeState(false));
 
     private static final Map<ResourceLocation, RenderType> SCREENS = new HashMap<>();
     private static final Map<ResourceLocation, RenderType> SCREENS_NO_CULL = new HashMap<>();

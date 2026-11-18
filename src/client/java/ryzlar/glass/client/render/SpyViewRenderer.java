@@ -369,9 +369,10 @@ public final class SpyViewRenderer
                 primeGraph(mc, level, view, modelView, cullProjection, position);
             }
             levelRenderer.renderLevel(gr.glass$getResourcePool(), deltaTracker, false, view.camera, modelView, projection, fogBuffer, fogColor, !foggy);
-            if(!placement.cloakFloor().isEmpty())
+            CloakFill fill = placement.cloakFill();
+            if(fill != null && view.target != null)
             {
-                drawCloakGround(mc, level, placement, view, unclipped, projection, modelView, position);
+                drawCloakGround(mc, level, fill, view, unclipped, projection, modelView, position);
             }
             view.rendered = true;
         }
@@ -425,157 +426,33 @@ public final class SpyViewRenderer
     }
 
     /**
-     * Cloak: puts the ground back. The clip plane cut away the ground between the screen and the back of the hidden part
-     * (and beside it), so through the bottom of a cloak you would see the sky; those block tops are drawn again on top
-     * of the view. Where the hidden blocks stood on it, the grass there has died, so the ground from just outside the
-     * cloak is drawn instead. Just behind the hidden part the real ground is in the view, but its baked-in shading (the
-     * dark edge along the hidden walls) would show their outline, so it is drawn over too, lit as if nothing stood there.
+     * Cloak: puts the ground back (see {@link CloakFill}). First the real ground just behind the hidden part, drawn
+     * again without the hidden blocks' shading, tested against the view's own depth (same projection). Then the depth is
+     * cleared and the ground under and beside the hidden part is drawn without the clip plane: it is nearer than anything
+     * else the cloak shows there, so it only has to sort itself out.
      */
-    private static void drawCloakGround(Minecraft mc, ClientLevel level, TerminalPlacement placement, SpyView view,
+    private static void drawCloakGround(Minecraft mc, ClientLevel level, CloakFill fill, SpyView view,
                                         Matrix4f unclipped, Matrix4f clipped, Matrix4f modelView, Vec3 camera)
     {
-        BlockPos lightPos = placement.cloakFloorLight();
-        Ground ground = new Ground(mc, level, camera, lightPos, level.getBlockState(lightPos.below()), lightPos.below());
+        fill.refresh(level);
         Matrix4fStack stack = RenderSystem.getModelViewStack();
         stack.pushMatrix();
         stack.mul(modelView);
         try
         {
             MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
-
-            //Under and beside the hidden part: no depth test, with the projection without the clip plane.
-            RenderSystem.setProjectionMatrix(view.floorProjection.getBuffer(unclipped), ProjectionType.PERSPECTIVE);
-            VertexConsumer floor = buffers.getBuffer(GlassRenderTypes.CLOAK_FLOOR);
-            for(BlockPos pos : placement.cloakFloor())
-            {
-                boolean covered = !level.getBlockState(pos.above()).isAir();
-                ground.drawTop(floor, pos, covered, 0F);
-            }
-            buffers.endBatch(GlassRenderTypes.CLOAK_FLOOR);
-
-            //Behind it: the view's own (clipped) projection, so the depth test matches what the view drew.
             RenderSystem.setProjectionMatrix(view.projection.getBuffer(clipped), ProjectionType.PERSPECTIVE);
-            VertexConsumer ring = buffers.getBuffer(GlassRenderTypes.CLOAK_RING);
-            for(BlockPos pos : placement.cloakRing())
-            {
-                if(level.getBlockState(pos.above()).isAir())
-                {
-                    ground.drawTop(ring, pos, false, RING_LIFT);
-                }
-            }
-            buffers.endBatch(GlassRenderTypes.CLOAK_RING);
+            fill.drawRing(buffers.getBuffer(GlassRenderTypes.CLOAK_GROUND), camera);
+            buffers.endBatch(GlassRenderTypes.CLOAK_GROUND);
+
+            RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(view.target.getDepthTexture(), 1.0D);
+            RenderSystem.setProjectionMatrix(view.floorProjection.getBuffer(unclipped), ProjectionType.PERSPECTIVE);
+            fill.drawFill(buffers.getBuffer(GlassRenderTypes.CLOAK_GROUND), camera);
+            buffers.endBatch(GlassRenderTypes.CLOAK_GROUND);
         }
         finally
         {
             stack.popMatrix();
-        }
-    }
-
-    /** How far above the real ground the ground behind a cloak is drawn again, in blocks. */
-    private static final float RING_LIFT = 0.004F;
-
-    /** Draws block tops for a cloak's ground, with smooth light worked out as if the hidden blocks were not there. */
-    private static final class Ground
-    {
-        private final Minecraft mc;
-        private final ClientLevel level;
-        private final Vec3 camera;
-        private final int outsideBlockLight;
-        private final int outsideSkyLight;
-        private final BlockState outsideGround;
-        private final BlockPos outsideGroundPos;
-        private final RandomSource random = RandomSource.create();
-        private final List<BlockModelPart> parts = new ArrayList<>();
-
-        Ground(Minecraft mc, ClientLevel level, Vec3 camera, BlockPos lightPos, BlockState outsideGround, BlockPos outsideGroundPos)
-        {
-            this.mc = mc;
-            this.level = level;
-            this.camera = camera;
-            this.outsideBlockLight = level.getBrightness(LightLayer.BLOCK, lightPos);
-            this.outsideSkyLight = level.getBrightness(LightLayer.SKY, lightPos);
-            this.outsideGround = outsideGround;
-            this.outsideGroundPos = outsideGroundPos;
-        }
-
-        private static boolean isGround(BlockState state, ClientLevel level, BlockPos pos)
-        {
-            return !state.isAir() && state.getRenderShape() == RenderShape.MODEL && state.isFaceSturdy(level, pos, Direction.UP);
-        }
-
-        /**
-         * {@code covered}: something hidden stands on this block, so it shows the ground from outside the cloak instead
-         * (grass turns to dirt under blocks, which would leave the base's footprint).
-         */
-        void drawTop(VertexConsumer consumer, BlockPos pos, boolean covered, float lift)
-        {
-            BlockState state = level.getBlockState(pos);
-            if(!isGround(state, level, pos))
-            {
-                return;
-            }
-            BlockPos tintPos = pos;
-            if(covered && isGround(outsideGround, level, outsideGroundPos))
-            {
-                state = outsideGround;
-                tintPos = outsideGroundPos;
-            }
-            parts.clear();
-            random.setSeed(state.getSeed(pos));
-            mc.getBlockRenderer().getBlockModel(state).collectParts(random, parts);
-            float x0 = (float)(pos.getX() - camera.x);
-            float y = (float)(pos.getY() + 1 - camera.y) + lift;
-            float z0 = (float)(pos.getZ() - camera.z);
-            //Corner order: (x0,z0) (x0,z1) (x1,z1) (x1,z0).
-            int l00 = cornerLight(pos.getX(), pos.getY() + 1, pos.getZ());
-            int l01 = cornerLight(pos.getX(), pos.getY() + 1, pos.getZ() + 1);
-            int l11 = cornerLight(pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1);
-            int l10 = cornerLight(pos.getX() + 1, pos.getY() + 1, pos.getZ());
-            for(BlockModelPart part : parts)
-            {
-                for(BakedQuad quad : part.getQuads(Direction.UP))
-                {
-                    int tint = quad.isTinted() ? mc.getBlockColors().getColor(state, level, tintPos, quad.tintIndex()) : -1;
-                    float r = tint == -1 ? 1F : ((tint >> 16) & 0xFF) / 255F;
-                    float g = tint == -1 ? 1F : ((tint >> 8) & 0xFF) / 255F;
-                    float b = tint == -1 ? 1F : (tint & 0xFF) / 255F;
-                    TextureAtlasSprite sprite = quad.sprite();
-                    consumer.addVertex(x0, y, z0).setColor(r, g, b, 1F).setUv(sprite.getU0(), sprite.getV0()).setLight(l00);
-                    consumer.addVertex(x0, y, z0 + 1F).setColor(r, g, b, 1F).setUv(sprite.getU0(), sprite.getV1()).setLight(l01);
-                    consumer.addVertex(x0 + 1F, y, z0 + 1F).setColor(r, g, b, 1F).setUv(sprite.getU1(), sprite.getV1()).setLight(l11);
-                    consumer.addVertex(x0 + 1F, y, z0).setColor(r, g, b, 1F).setUv(sprite.getU1(), sprite.getV0()).setLight(l10);
-                }
-            }
-        }
-
-        /**
-         * Smooth light at a block corner: the average of the four blocks touching it, like vanilla smooth lighting. A
-         * solid block there (a hidden one, most likely) counts as the light just outside the cloak, so the hidden blocks
-         * leave no dark edges. Packed with sixteenths, so the lightmap blends between levels.
-         */
-        private int cornerLight(int x, int y, int z)
-        {
-            float block = 0F;
-            float sky = 0F;
-            BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
-            for(int dx = -1; dx <= 0; dx++)
-            {
-                for(int dz = -1; dz <= 0; dz++)
-                {
-                    p.set(x + dx, y, z + dz);
-                    if(level.getBlockState(p).canOcclude())
-                    {
-                        block += outsideBlockLight;
-                        sky += outsideSkyLight;
-                    }
-                    else
-                    {
-                        block += level.getBrightness(LightLayer.BLOCK, p);
-                        sky += level.getBrightness(LightLayer.SKY, p);
-                    }
-                }
-            }
-            return Math.min(240, Math.round(block / 4F * 16F)) | Math.min(240, Math.round(sky / 4F * 16F)) << 16;
         }
     }
 

@@ -12,6 +12,7 @@ import org.joml.Vector3f;
 import ryzlar.glass.GlassRegistry;
 import ryzlar.glass.blockentity.GlassBaseBlockEntity;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
+import ryzlar.glass.client.render.CloakFill;
 import ryzlar.glass.client.sound.GlassAmbienceSound;
 
 import java.util.ArrayList;
@@ -55,25 +56,12 @@ public class TerminalPlacement
     private Vec3 clipPoint;
     private Vector3f clipNormal;
 
-    /** Cloak side: the ground blocks in (and beside) the hidden part, whose tops are drawn back in, see {@link #cloakFloor}. */
-    private List<BlockPos> floor = List.of();
-    /** Where the ground's light is read: just outside the screen's bottom row (inside, the hidden blocks are dark). */
-    private BlockPos floorLight = BlockPos.ZERO;
-    /**
-     * Cloak side: the ground just behind the hidden part (past the clip plane, so it is in the view). Its baked-in
-     * ambient occlusion would trace the outline of the hidden blocks, so it is drawn over again without it.
-     */
-    private List<BlockPos> ring = List.of();
+    /** Cloak side: its ground, rebuilt from the surroundings (null for the top and bottom sides). */
+    @org.jetbrains.annotations.Nullable
+    private CloakFill fill;
+
     /** Cloak side: the part of the world this side hides (the screen's glass included). */
     private AABB hidden = new AABB(0, 0, 0, 0, 0, 0);
-    /**
-     * How far the ground beside the hidden part is drawn back in, in blocks. Seen at an angle, a ray through the glass
-     * can run a long way sideways before it reaches the clip plane, and all the ground it passes over was cut away.
-     */
-    private static final int FLOOR_SPREAD = 24;
-    /** How many block rows of ground behind the hidden part are drawn over again. */
-    private static final int RING_ROWS = 2;
-
     /** Cloak: the placement of each side of the screen, made when first needed. */
     private final Map<Direction, TerminalPlacement> faces = new EnumMap<>(Direction.class);
 
@@ -241,7 +229,8 @@ public class TerminalPlacement
         clipNormal = new Vector3f(-side.getStepX(), -side.getStepY(), -side.getStepZ());
         cullRender = true;
         hidden = hiddenBox(side, plane - CLIP_MARGIN, outer + 0.5D);
-        floor = side.getAxis().isHorizontal() ? floorOf(side, outer, (int)Math.round(depth)) : List.of();
+        CloakFill.Area area = side.getAxis().isHorizontal() ? areaOf(side, outer, (int)Math.round(depth)) : null;
+        fill = area == null ? null : new CloakFill(area);
     }
 
     /** The screen's bounding box, stretched along the side's axis from the clip plane to the outer face. */
@@ -280,12 +269,9 @@ public class TerminalPlacement
         return hidden.contains(eye);
     }
 
-    /**
-     * The clip plane also cuts away the ground between the screen and the back of the hidden part (and beside it), so
-     * through the bottom of a cloak you would see the sky. These are the ground blocks there: the block row under the
-     * screen, from its outer face back to the clip plane, and a little to either side.
-     */
-    private List<BlockPos> floorOf(Direction side, double outer, int depth)
+    /** Where this side's ground is: the block row under the screen, from its outer glass back through the hidden part. */
+    @org.jetbrains.annotations.Nullable
+    private CloakFill.Area areaOf(Direction side, double outer, int depth)
     {
         Direction across = side.getClockWise();
         int minY = Integer.MAX_VALUE;
@@ -301,47 +287,22 @@ public class TerminalPlacement
         }
         if(minY == Integer.MAX_VALUE)
         {
-            return List.of();
+            return null;
         }
-        int spread = FLOOR_SPREAD;
         //The outermost glass block, as a block coordinate along the side's axis.
         int outerBlock = (int)Math.floor(outer * (side.getStepX() + side.getStepZ()));
         int middle = (minAcross + maxAcross) / 2 * (across.getStepX() + across.getStepZ());
         int front = outerBlock + side.getStepX() + side.getStepZ();
-        floorLight = new BlockPos(side.getAxis() == Direction.Axis.X ? front : middle, minY, side.getAxis() == Direction.Axis.Z ? front : middle);
-        List<BlockPos> blocks = new ArrayList<>();
-        List<BlockPos> behind = new ArrayList<>();
-        for(int k = 0; k < depth + RING_ROWS; k++)
-        {
-            int along = outerBlock - k * (side.getStepX() + side.getStepZ());
-            for(int a = minAcross - spread; a <= maxAcross + spread; a++)
-            {
-                //a is measured along "across", which points the positive or negative way of its own axis.
-                int acrossCoord = a * (across.getStepX() + across.getStepZ());
-                int x = side.getAxis() == Direction.Axis.X ? along : acrossCoord;
-                int z = side.getAxis() == Direction.Axis.Z ? along : acrossCoord;
-                (k < depth ? blocks : behind).add(new BlockPos(x, minY - 1, z));
-            }
-        }
-        ring = List.copyOf(behind);
-        return List.copyOf(blocks);
+        //Where the light is read: just outside the screen's bottom row (inside, the hidden blocks are dark).
+        BlockPos lightPos = new BlockPos(side.getAxis() == Direction.Axis.X ? front : middle, minY, side.getAxis() == Direction.Axis.Z ? front : middle);
+        return new CloakFill.Area(side, minY - 1, minAcross, maxAcross, outerBlock, depth, hidden, lightPos);
     }
 
-    /** Cloak side: the ground just behind the hidden part, drawn over again without the hidden blocks' shading. */
-    public List<BlockPos> cloakRing()
+    /** Cloak side: its ground, rebuilt from the surroundings. Null for the top and bottom, and for camera screens. */
+    @org.jetbrains.annotations.Nullable
+    public CloakFill cloakFill()
     {
-        return ring;
-    }
-
-    public BlockPos cloakFloorLight()
-    {
-        return floorLight;
-    }
-
-    /** Cloak side: the ground blocks whose tops are drawn back in after the view. Empty for anything else. */
-    public List<BlockPos> cloakFloor()
-    {
-        return floor;
+        return fill;
     }
 
     /** The block centre's distance along a side's outward normal (larger is further out on that side). */

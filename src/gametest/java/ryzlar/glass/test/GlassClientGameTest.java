@@ -375,6 +375,28 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("fill -48 -61 -60 -24 -61 -25 minecraft:grass_block");
             //Under the base the grass has died, as it does under blocks; the cloak must not show that footprint.
             server.runCommand("fill -40 -61 -45 -34 -61 -41 minecraft:dirt");
+            //Higher ground to the west of the base, and grass dotted all around: the made-up ground under the cloak has
+            //to carry both on.
+            server.runCommand("fill -48 -60 -52 -41 -60 -28 minecraft:grass_block");
+            server.runOnServer(s -> {
+                for(int x = -47; x <= -26; x++)
+                {
+                    for(int z = -55; z <= -26; z++)
+                    {
+                        boolean base = x >= -41 && x <= -33 && z >= -46 && z <= -39;
+                        boolean player = Math.abs(x + 36) <= 1 && z >= -38;
+                        if(!base && !player && Math.floorMod(x * 7 + z * 3, 5) == 0)
+                        {
+                            BlockPos ground = new BlockPos(x, x <= -41 ? -60 : -61, z);
+                            if(s.overworld().getBlockState(ground).is(net.minecraft.world.level.block.Blocks.GRASS_BLOCK)
+                                    && s.overworld().getBlockState(ground.above()).isAir())
+                            {
+                                s.overworld().setBlockAndUpdate(ground.above(), net.minecraft.world.level.block.Blocks.SHORT_GRASS.defaultBlockState());
+                            }
+                        }
+                    }
+                }
+            });
             server.runCommand("fill -40 -60 -45 -34 -56 -41 minecraft:bricks");
             server.runCommand("fill -39 -60 -50 -39 -55 -50 minecraft:red_wool");
             server.runCommand("fill -37 -60 -50 -37 -55 -50 minecraft:blue_wool");
