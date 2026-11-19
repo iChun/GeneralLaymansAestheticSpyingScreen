@@ -104,6 +104,49 @@ public class TerminalPlacement
         onGlassChanged();
     }
 
+    /**
+     * A fixed camera with no screen (a GLASS tablet's view): looking out of a terminal's front face, the way it faces,
+     * whatever the player does. See {@link TabletPlacement}.
+     */
+    protected TerminalPlacement(String key, BlockPos terminal, Direction facing)
+    {
+        this.channel = key;
+        this.screen = key;
+        this.master = null;
+        this.cameraSignature = "";
+        this.placingFace = facing;
+        this.cloak = false;
+        this.playedAmbience = true;
+        this.sourceOrigin = Vec3.ZERO;
+        this.destOrigin = Vec3.atCenterOf(terminal).add(Vec3.atLowerCornerOf(facing.getUnitVec3i()).scale(0.52D));
+        this.sourceToDest = new Matrix3f();
+        float yaw = switch(facing)
+        {
+            case WEST -> 90F;
+            case NORTH -> 180F;
+            case EAST -> -90F;
+            default -> 0F;
+        };
+        float pitch = facing == Direction.UP ? -90F : facing == Direction.DOWN ? 90F : 0F;
+        //As the game's camera turns for a yaw and pitch.
+        this.rotation = new Quaternionf().rotationYXZ((float)Math.PI - yaw * net.minecraft.util.Mth.DEG_TO_RAD, -pitch * net.minecraft.util.Mth.DEG_TO_RAD, 0F);
+        this.clipPoint = Vec3.atCenterOf(terminal).add(Vec3.atLowerCornerOf(facing.getUnitVec3i()).scale(0.5D - CLIP_MARGIN));
+        this.clipNormal = new Vector3f(facing.getStepX(), facing.getStepY(), facing.getStepZ());
+        this.cullRender = true;
+    }
+
+    /** The fixed camera's eye (see the fixed camera constructor). */
+    protected Vec3 fixedEye()
+    {
+        return destOrigin;
+    }
+
+    /** The fixed camera's turn. */
+    protected Quaternionf fixedRotation()
+    {
+        return new Quaternionf(rotation);
+    }
+
     /** One side of a cloak. */
     private TerminalPlacement(TerminalPlacement cloak, Direction side)
     {

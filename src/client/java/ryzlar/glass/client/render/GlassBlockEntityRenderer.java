@@ -75,6 +75,7 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
         {
             boolean wirelessScreen = isMaster && !((GlassProjectorBlockEntity)te).wirelessPos.isEmpty() && te.channel.equals(((GlassProjectorBlockEntity)te).screenKey());
             drawScreen(te, te.channel, te.activeFaces, wirelessScreen, false, poseStack, buffers, partialTick);
+            drawAlert(te, poseStack, buffers, partialTick);
         }
         else
         {
@@ -82,6 +83,42 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
         }
 
         poseStack.popPose();
+    }
+
+    /**
+     * A motion sensor on the channel's camera saw someone: the screen flashes red, and the projector's face reads
+     * ALERT.
+     */
+    private static void drawAlert(GlassBaseBlockEntity te, PoseStack poseStack, MultiBufferSource buffers, float partialTick)
+    {
+        BlockPos masterPos = masterPos(te.channel);
+        Level level = te.getLevel();
+        if(masterPos == null || level == null || SpyViewRenderer.INSTANCE.isRendering()
+                || !(level.getBlockEntity(masterPos) instanceof GlassProjectorBlockEntity master) || master.cloak)
+        {
+            return;
+        }
+        float flash = ryzlar.glass.client.gadget.GadgetsClient.alertFlash(master.channelId, partialTick);
+        if(flash <= 0F)
+        {
+            return;
+        }
+        drawPlanes(te, poseStack, buffers.getBuffer(GlassRenderTypes.planes(true)), 1F, 0.12F, 0.18F, 0.45F * flash, 0.503D, partialTick);
+        if(te == master && !te.activeFaces.isEmpty())
+        {
+            Direction face = te.activeFaces.getFirst();
+            net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
+            net.minecraft.network.chat.Component text = net.minecraft.network.chat.Component.translatable("glass.screen.alert");
+            poseStack.pushPose();
+            poseStack.translate(face.getStepX() * 0.506D, face.getStepY() * 0.506D, face.getStepZ() * 0.506D);
+            poseStack.mulPose(face.getRotation());
+            poseStack.mulPose(Axis.XP.rotationDegrees(-90F));
+            float scale = 0.022F;
+            poseStack.scale(scale, -scale, scale);
+            int colour = (int)(255 * Math.min(1F, 0.5F + flash)) << 24 | 0xFF4A5A;
+            font.drawInBatch(text, -font.width(text) / 2F, -4F, colour, false, poseStack.last().pose(), buffers, net.minecraft.client.gui.Font.DisplayMode.POLYGON_OFFSET, 0, LightTexture.FULL_BRIGHT);
+            poseStack.popPose();
+        }
     }
 
     private void renderBeacon(GlassProjectorBlockEntity master, float partialTick, PoseStack poseStack, MultiBufferSource buffers)

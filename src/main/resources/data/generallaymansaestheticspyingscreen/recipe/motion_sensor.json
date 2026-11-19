@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    " O ",
+    "IGI",
+    " R "
+  ],
+  "key": {
+    "O": "minecraft:observer",
+    "I": "minecraft:iron_ingot",
+    "G": "minecraft:glowstone_dust",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:motion_sensor",
+    "count": 1
+  }
+}

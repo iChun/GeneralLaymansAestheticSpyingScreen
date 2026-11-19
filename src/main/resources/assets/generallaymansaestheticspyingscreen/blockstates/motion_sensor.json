@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "powered=false": {
+      "model": "generallaymansaestheticspyingscreen:block/motion_sensor"
+    },
+    "powered=true": {
+      "model": "generallaymansaestheticspyingscreen:block/motion_sensor_on"
+    }
+  }
+}

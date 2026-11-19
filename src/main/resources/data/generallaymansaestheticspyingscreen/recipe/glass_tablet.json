@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "IGI",
+    "GTG",
+    "IRI"
+  ],
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "G": "minecraft:glass_pane",
+    "T": "generallaymansaestheticspyingscreen:glass_terminal",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:glass_tablet",
+    "count": 1
+  }
+}

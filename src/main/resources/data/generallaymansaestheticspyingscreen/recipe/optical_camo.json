@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "AGA",
+    "IFI",
+    "AEA"
+  ],
+  "key": {
+    "A": "minecraft:amethyst_shard",
+    "G": "minecraft:glass",
+    "I": "minecraft:iron_ingot",
+    "F": "minecraft:fermented_spider_eye",
+    "E": "minecraft:ender_pearl"
+  },
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:optical_camo",
+    "count": 1
+  }
+}

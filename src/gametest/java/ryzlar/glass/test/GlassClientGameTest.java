@@ -817,6 +817,64 @@ public class GlassClientGameTest implements FabricClientGameTest
             settle(singleplayer, context);
             context.waitTicks(20);
 
+            //Gadgets. A motion sensor next to the diamond camera, and a zombie in its view: the sensor fires, and the
+            //tablet tuned to that channel shows the camera's picture with the alert.
+            server.runCommand("tp @p 76.5 -60 10.5 200 10");
+            settle(singleplayer, context);
+            server.runOnServer(s -> {
+                ItemStack tablet = new ItemStack(ryzlar.glass.gadget.Gadgets.GLASS_TABLET);
+                tablet.set(ryzlar.glass.gadget.Gadgets.TABLET_LINK, new ryzlar.glass.gadget.TabletLink(diamondId, "Diamond Net"));
+                player(s).setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, tablet);
+            });
+            server.runCommand("setblock 81 -59 0 generallaymansaestheticspyingscreen:motion_sensor");
+            server.runCommand("summon minecraft:zombie 80.5 -60 6.5 {NoAI:1b,PersistenceRequired:1b,Silent:1b}");
+            context.waitTicks(15);
+            check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(81, -59, 0)).getValue(ryzlar.glass.gadget.MotionSensorBlock.POWERED)),
+                    "the motion sensor sees the zombie through the terminal");
+            context.setScreen(() -> new ryzlar.glass.client.gadget.TabletScreen(net.minecraft.world.InteractionHand.MAIN_HAND));
+            context.waitTicks(50);
+            context.takeScreenshot("gadget_tablet");
+            context.setScreen(() -> null);
+            server.runCommand("kill @e[type=minecraft:zombie]");
+            server.runCommand("setblock 81 -59 0 minecraft:air");
+
+            //A doorway filled with hard light.
+            server.runCommand("fill 89 -61 14 99 -61 26 minecraft:stone_bricks");
+            server.runCommand("fill 90 -60 20 90 -57 20 minecraft:stone_bricks");
+            server.runCommand("fill 94 -60 20 94 -57 20 minecraft:stone_bricks");
+            server.runCommand("fill 90 -57 20 94 -57 20 minecraft:stone_bricks");
+            server.runCommand("setblock 90 -60 20 generallaymansaestheticspyingscreen:hard_light_emitter[facing=east]");
+            server.runCommand("setblock 89 -60 20 minecraft:redstone_block");
+            context.waitTicks(12);
+            check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(92, -59, 20)).is(ryzlar.glass.gadget.Gadgets.HARD_LIGHT)),
+                    "a powered hard-light emitter fills the doorway");
+            server.runCommand("tp @p 92.5 -60 25.5 180 5");
+            context.waitTicks(10);
+            context.takeScreenshot("gadget_hard_light");
+
+            //A holo map table, a decoy of the player, and optical camo.
+            server.runCommand("setblock 96 -60 16 generallaymansaestheticspyingscreen:holo_map_table");
+            server.runOnServer(s -> s.overworld().addFreshEntity(ryzlar.glass.gadget.HoloDecoyEntity.of(player(s), 92.5, -60, 16.5)));
+            server.runCommand("fill 97 -60 13 99 -59 14 minecraft:oak_planks");
+            server.runCommand("fill 93 -60 18 94 -58 18 minecraft:oak_log");
+            server.runCommand("tp @p 98.5 -58.5 19.5 145 35");
+            context.waitTicks(40);
+            context.takeScreenshot("gadget_map_table");
+            server.runCommand("tp @p 92.5 -60 21.5 180 5");
+            context.waitTicks(10);
+            context.takeScreenshot("gadget_decoy");
+            server.runOnServer(s -> ryzlar.glass.gadget.OpticalCamo.engage(player(s)));
+            context.waitTicks(10);
+            check(server.computeOnServer(s -> ryzlar.glass.gadget.OpticalCamo.isCamouflaged(player(s))), "optical camo is on");
+            context.takeScreenshot("gadget_camo");
+            server.runOnServer(s -> ryzlar.glass.gadget.OpticalCamo.breakCamo(player(s)));
+            server.runCommand("setblock 89 -60 20 minecraft:air");
+            context.waitTicks(15);
+            check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(92, -59, 20)).isAir()), "unpowered, the hard light goes");
+            server.runCommand("tp @p 0.5 -60 8.5 180 0");
+            settle(singleplayer, context);
+            context.waitTicks(10);
+
             //Removing a camera terminal takes the channel's camera offline: at once when broken, and within a second even
             //when the removal skips block entity side effects (as /setblock does).
             server.runCommand("setblock 80 -59 0 minecraft:air");

@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "lit=false": {
+      "model": "generallaymansaestheticspyingscreen:block/holo_map_table"
+    },
+    "lit=true": {
+      "model": "generallaymansaestheticspyingscreen:block/holo_map_table"
+    }
+  }
+}

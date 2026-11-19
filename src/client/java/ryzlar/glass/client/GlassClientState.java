@@ -114,6 +114,12 @@ public final class GlassClientState implements GlassClientBridge
     }
 
     @Override
+    public void openTabletScreen(net.minecraft.world.InteractionHand hand)
+    {
+        ryzlar.glass.client.gadget.GadgetsClient.openTablet(hand);
+    }
+
+    @Override
     public void onGlassClicked(BlockPos pos)
     {
         clickedPos = pos.immutable();

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    "GAG",
+    "IHI",
+    "I I"
+  ],
+  "key": {
+    "G": "minecraft:glass",
+    "A": "minecraft:amethyst_shard",
+    "I": "minecraft:iron_ingot",
+    "H": "generallaymansaestheticspyingscreen:holo_projector"
+  },
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:holo_map_table",
+    "count": 1
+  }
+}

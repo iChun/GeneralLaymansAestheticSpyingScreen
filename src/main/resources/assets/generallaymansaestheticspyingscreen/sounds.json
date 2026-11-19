@@ -87,5 +87,12 @@
       "generallaymansaestheticspyingscreen:ripple"
     ],
     "subtitle": "subtitles.generallaymansaestheticspyingscreen.ripple"
+  },
+  "alert": {
+    "category": "block",
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.alert",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:alert"
+    ]
   }
 }

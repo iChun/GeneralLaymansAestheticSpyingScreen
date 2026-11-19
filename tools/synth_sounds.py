@@ -294,6 +294,21 @@ def ripple():
     finish(reverb(buf, 1.0, 0.35, 5000), 'ripple', peak=0.75)
 
 
+def alert():
+    """Motion alert: two-tone pulses, a little buzzy, with a glassy tail."""
+    buf = silence(1.3)
+    for i, f in enumerate((1046.5, 784.0, 1046.5, 784.0)):
+        x = t(0.16)
+        tone = np.sign(np.sin(2 * np.pi * f * x)) * 0.25 + np.sin(2 * np.pi * f * x) * 0.6 + np.sin(2 * np.pi * f * 2 * x) * 0.15
+        tone = svf(tone, 3200, 0.8, 'lp') * env_adsr(len(x), 0.005, 0.03, 0.8, 0.04)
+        place(buf, tone * 0.6, i * 0.19)
+    place(buf, bell(1567.98, 0.6, 0.2) * 0.25, 0.76)
+    finish(reverb(buf, 1.0, 0.25, 5000), 'alert', peak=0.8)
+
+
+ONLY = sys.argv[2:] if len(sys.argv) > 2 else None
+
 os.makedirs(OUT, exist_ok=True)
-for f in (nano_assemble, nano_dissolve, cloak_engage, field_rise, scan_start, scan_sweep, scan_complete, sim_open, sim_close, ui_click, ui_open, ripple):
-    f()
+for f in (nano_assemble, nano_dissolve, cloak_engage, field_rise, scan_start, scan_sweep, scan_complete, sim_open, sim_close, ui_click, ui_open, ripple, alert):
+    if ONLY is None or f.__name__ in ONLY:
+        f()

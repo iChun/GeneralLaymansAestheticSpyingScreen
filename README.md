@@ -18,6 +18,15 @@ This fork adds a few things on top:
 - **Holo Cube.** Set it down and right-click it: it scans the room around it with a wave of light. Set it down
   anywhere and right-click it again: the room is projected 1:1 as a solid simulation you can walk into, with a
   blue, dissolving edge and a glowing barrier round it, so everyone can see a simulation is running.
+- **Gadgets.**
+  - **GLASS Tablet:** a handheld screen that shows a channel's camera live.
+  - **Hard-Light Emitter:** fills an opening with a wall of solid light that stops players, mobs and arrows,
+    switched by redstone.
+  - **Motion Sensor:** next to a terminal it gives a redstone signal when someone comes into view, and the
+    channel's screens flash ALERT.
+  - **Holo Map Table:** a live miniature of the land around it, with players, monsters and animals on it.
+  - **Holo Decoy:** a hologram of you that draws the monsters around it.
+  - **Optical Camo Module:** ten seconds of invisibility; you shimmer while you move.
 
 ## Original author and credit
 

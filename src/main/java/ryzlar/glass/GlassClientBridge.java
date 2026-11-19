@@ -37,6 +37,9 @@ public interface GlassClientBridge
 
     default void onGlassClicked(BlockPos pos) {}
 
+    /** A GLASS tablet was used: open its screen. */
+    default void openTabletScreen(net.minecraft.world.InteractionHand hand) {}
+
     /** Called every client tick by each glass block entity so the client knows which glass belongs to which channel. */
     default void syncGlass(GlassBaseBlockEntity glass) {}
 

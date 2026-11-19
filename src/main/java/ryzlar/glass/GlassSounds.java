@@ -22,6 +22,7 @@ public final class GlassSounds
     public static final SoundEvent UI_CLICK = register("ui_click");
     public static final SoundEvent UI_OPEN = register("ui_open");
     public static final SoundEvent RIPPLE = register("ripple");
+    public static final SoundEvent ALERT = register("alert");
 
     private GlassSounds() {}
 

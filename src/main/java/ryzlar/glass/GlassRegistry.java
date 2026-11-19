@@ -93,7 +93,7 @@ public final class GlassRegistry
         return BlockBehaviour.Properties.ofFullCopy(Blocks.GLASS).strength(0.8F);
     }
 
-    private static <B extends Block> B registerBlock(String name, Function<BlockBehaviour.Properties, B> factory, BlockBehaviour.Properties properties)
+    public static <B extends Block> B registerBlock(String name, Function<BlockBehaviour.Properties, B> factory, BlockBehaviour.Properties properties)
     {
         ResourceKey<Block> blockKey = ResourceKey.create(Registries.BLOCK, Glass.id(name));
         B block = Registry.register(BuiltInRegistries.BLOCK, blockKey, factory.apply(properties.setId(blockKey)));
@@ -103,19 +103,19 @@ public final class GlassRegistry
         return block;
     }
 
-    private static <T extends net.minecraft.world.entity.Entity> EntityType<T> registerEntity(String name, EntityType.Builder<T> builder)
+    public static <T extends net.minecraft.world.entity.Entity> EntityType<T> registerEntity(String name, EntityType.Builder<T> builder)
     {
         ResourceKey<EntityType<?>> key = ResourceKey.create(Registries.ENTITY_TYPE, Glass.id(name));
         return Registry.register(BuiltInRegistries.ENTITY_TYPE, key, builder.build(key));
     }
 
-    private static Item registerItem(String name, Function<Item.Properties, Item> factory)
+    public static Item registerItem(String name, Function<Item.Properties, Item> factory)
     {
         ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, Glass.id(name));
         return Registry.register(BuiltInRegistries.ITEM, itemKey, factory.apply(new Item.Properties().setId(itemKey)));
     }
 
-    private static <T extends BlockEntityType<?>> T registerBlockEntity(String name, T type)
+    public static <T extends BlockEntityType<?>> T registerBlockEntity(String name, T type)
     {
         return Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, Glass.id(name), type);
     }
