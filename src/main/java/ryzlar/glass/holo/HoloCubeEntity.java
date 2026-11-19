@@ -40,7 +40,7 @@ import java.util.UUID;
  * way the player who set it down was facing. Right-click again to switch it off; sneak + right-click (or hit it) to pick
  * it up, scan and all.
  */
-public class HoloDroneEntity extends Entity
+public class HoloCubeEntity extends Entity
 {
     /** How fast the nano wave spreads over the room, in blocks per tick: slower than screens, to watch the room build. */
     public static final float WAVE_SPEED = 0.12F;
@@ -52,11 +52,11 @@ public class HoloDroneEntity extends Entity
     /** How long picking it up takes while it projects (the room shrinks back into it first), in ticks. */
     public static final int PACK_TICKS = 70;
 
-    private static final EntityDataAccessor<Boolean> PROJECTING = SynchedEntityData.defineId(HoloDroneEntity.class, EntityDataSerializers.BOOLEAN);
-    private static final EntityDataAccessor<Boolean> PACKING = SynchedEntityData.defineId(HoloDroneEntity.class, EntityDataSerializers.BOOLEAN);
-    private static final EntityDataAccessor<Boolean> SCANNING = SynchedEntityData.defineId(HoloDroneEntity.class, EntityDataSerializers.BOOLEAN);
-    private static final EntityDataAccessor<Integer> TURN = SynchedEntityData.defineId(HoloDroneEntity.class, EntityDataSerializers.INT);
-    private static final EntityDataAccessor<ItemStack> ITEM = SynchedEntityData.defineId(HoloDroneEntity.class, EntityDataSerializers.ITEM_STACK);
+    private static final EntityDataAccessor<Boolean> PROJECTING = SynchedEntityData.defineId(HoloCubeEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> PACKING = SynchedEntityData.defineId(HoloCubeEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> SCANNING = SynchedEntityData.defineId(HoloCubeEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Integer> TURN = SynchedEntityData.defineId(HoloCubeEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<ItemStack> ITEM = SynchedEntityData.defineId(HoloCubeEntity.class, EntityDataSerializers.ITEM_STACK);
 
     private int packTicks;
     /** Server: the room being scanned, how long the scan has run and will run, and who started it. */
@@ -71,7 +71,7 @@ public class HoloDroneEntity extends Entity
     public long clientOnStart = Long.MIN_VALUE / 2;
     public long clientOffStart = Long.MIN_VALUE / 2;
     public float clientOffRadius;
-    /** Client: how far the room reaches from the drone, set by the renderer. */
+    /** Client: how far the room reaches from the cube, set by the renderer. */
     public float clientReach = 16F;
     /** Client: when the scan started and ended, and the room it runs over (worked out here from the client's world). */
     public long clientScanStart = Long.MIN_VALUE / 2;
@@ -83,9 +83,9 @@ public class HoloDroneEntity extends Entity
     @Nullable
     private String clientSeenScan;
     /** Client: told when a cube this client watched scanning has its scan (to take its panorama, see the client's Panoramas). */
-    public static java.util.function.Consumer<HoloDroneEntity> onClientScanDone = drone -> {};
+    public static java.util.function.Consumer<HoloCubeEntity> onClientScanDone = cube -> {};
 
-    public HoloDroneEntity(EntityType<? extends HoloDroneEntity> type, Level level)
+    public HoloCubeEntity(EntityType<? extends HoloCubeEntity> type, Level level)
     {
         super(type, level);
     }
@@ -94,15 +94,15 @@ public class HoloDroneEntity extends Entity
      * Sets a cube down in a block (on its floor), facing the way the player faces. With a scan, the room is turned so the
      * way the cube faced while scanning is the way the player faces now.
      */
-    public static void place(ServerPlayer player, BlockPos pos, ItemStack item, @Nullable DroneScan scan)
+    public static void place(ServerPlayer player, BlockPos pos, ItemStack item, @Nullable CubeScan scan)
     {
-        HoloDroneEntity drone = new HoloDroneEntity(GlassRegistry.HOLO_DRONE_ENTITY, player.level());
-        drone.setPos(pos.getX() + 0.5D, pos.getY(), pos.getZ() + 0.5D);
-        drone.setYRot(player.getYRot());
-        drone.entityData.set(ITEM, item);
+        HoloCubeEntity cube = new HoloCubeEntity(GlassRegistry.HOLO_CUBE_ENTITY, player.level());
+        cube.setPos(pos.getX() + 0.5D, pos.getY(), pos.getZ() + 0.5D);
+        cube.setYRot(player.getYRot());
+        cube.entityData.set(ITEM, item);
         int facing = facingOf(player.getYRot());
-        drone.entityData.set(TURN, scan == null ? 0 : Math.floorMod(facing - scan.facing(), 4));
-        player.level().addFreshEntity(drone);
+        cube.entityData.set(TURN, scan == null ? 0 : Math.floorMod(facing - scan.facing(), 4));
+        player.level().addFreshEntity(cube);
     }
 
     private static int facingOf(float yaw)
@@ -143,9 +143,9 @@ public class HoloDroneEntity extends Entity
     }
 
     @Nullable
-    public DroneScan scan()
+    public CubeScan scan()
     {
-        return entityData.get(ITEM).get(GlassRegistry.DRONE_SCAN);
+        return entityData.get(ITEM).get(GlassRegistry.CUBE_SCAN);
     }
 
     /** Client: how far the wave has spread now (growing while on, shrinking back after it went off; 0 when done). */
@@ -209,7 +209,7 @@ public class HoloDroneEntity extends Entity
         }
         else if(accessor == ITEM)
         {
-            DroneScan scan = scan();
+            CubeScan scan = scan();
             String id = scan == null ? null : scan.id();
             if(id != null && !id.equals(clientSeenScan) && clientScanStart > Long.MIN_VALUE / 4 && now - clientScanStart < 20L * 30L)
             {
@@ -340,11 +340,11 @@ public class HoloDroneEntity extends Entity
             maxZ = Math.max(maxZ, z);
         }
         BlockPos corner = new BlockPos(minX, minY, minZ);
-        String name = Component.translatable("glass.ui.drone.scanName").getString();
+        String name = Component.translatable("glass.ui.cube.scanName").getString();
         HoloProjectionData.Projection projection = HoloProjectionData.store(serverLevel, corner, maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1, room.blocks(), name);
         BlockPos origin = blockPosition().subtract(corner);
         ItemStack item = entityData.get(ITEM).copy();
-        item.set(GlassRegistry.DRONE_SCAN, new DroneScan(projection.id(), projection.name(), projection.sizeX(), projection.sizeY(), projection.sizeZ(),
+        item.set(GlassRegistry.CUBE_SCAN, new CubeScan(projection.id(), projection.name(), projection.sizeX(), projection.sizeY(), projection.sizeZ(),
                 origin.getX(), origin.getY(), origin.getZ(), facingOf(getYRot())));
         entityData.set(ITEM, item);
         //Projected where it was scanned, the room lies right over itself.
@@ -418,6 +418,12 @@ public class HoloDroneEntity extends Entity
             }
         }
         return InteractionResult.SUCCESS;
+    }
+
+    /** Tests: what the cube holds (its item, with or without a scan). */
+    public void setItem(ItemStack item)
+    {
+        entityData.set(ITEM, item);
     }
 
     /** Tests: starts a scan as if this player right-clicked the cube. */

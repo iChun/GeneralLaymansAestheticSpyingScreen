@@ -45,19 +45,26 @@ void main() {
     }
     float front = 1.0 - smoothstep(0.0, FRONT_WIDTH, reveal);
 
-    // The edge of a simulation (so you know where it ends): the closer to its walls, the more nano pixels are gone, each
-    // flickering out and back in on its own beat; the ones about to go glow, and the rest turns blue.
+    // The edge of a simulation (so you know where it ends): the closer to its walls, the more nano pixels give way to
+    // the simulation's own glowing blue fabric, each flickering over and back on its own beat; the ones about to go
+    // glow, and the rest turns blue. Right at the outside a few break off altogether.
     float edgeDistance = vertexColor.a > 0.999 ? 1000.0 : vertexColor.a * (255.0 / 254.0) * EDGE_BAND;
     float near = 1.0 - clamp(edgeDistance / EDGE_BAND, 0.0, 1.0);
     float glow = 0.0;
+    float fabric = 0.0;
+    // Which way this face looks (derivatives: outside any branch), for the fabric's grid lines along it.
+    vec3 faceAxis = abs(cross(dFdx(localPos), dFdy(localPos)));
+    float own = hash3(cell + 17.0);
     if (near > 0.0) {
-        float own = hash3(cell + 17.0);
         float beat = hash3(cell + floor(seconds * (0.5 + own * 1.5) + own * 7.0));
         float keep = own - (near * near * 0.72 + (beat - 0.5) * 0.3 * near);
         if (keep < 0.0) {
-            discard;
+            if (near > 0.86 && keep < -0.25) {
+                discard;
+            }
+            fabric = 1.0;
         }
-        glow = 1.0 - smoothstep(0.0, 0.12, keep);
+        glow = 1.0 - smoothstep(0.0, 0.12, abs(keep));
     }
 
     vec4 tex = texture(Sampler0, texCoord0);
@@ -85,6 +92,15 @@ void main() {
         float sweep = step(0.93, fract((floor(localPos.y * CELLS) / CELLS) * 0.35 - seconds * 0.45));
         colour = mix(colour, blue, shell * 0.85);
         colour += vec3(0.40, 0.85, 1.0) * (glow * 0.95 + sweep * 0.45) * near;
+        if (fabric > 0.5) {
+            // A pixel that gave way: deep blue, breathing, with a light grid line along its edges.
+            vec3 inCell = fract(localPos * CELLS + 0.0137);
+            vec3 toEdge = min(inCell, 1.0 - inCell);
+            vec2 along = faceAxis.x > faceAxis.y && faceAxis.x > faceAxis.z ? toEdge.yz : (faceAxis.y > faceAxis.z ? toEdge.xz : toEdge.xy);
+            float gridLine = 1.0 - smoothstep(0.0, 0.12, min(along.x, along.y));
+            float breathe = 0.55 + 0.45 * sin(seconds * (1.5 + own * 2.5) + own * 40.0);
+            colour = vec3(0.03, 0.16, 0.30) + vec3(0.18, 0.62, 1.0) * (0.25 + 0.35 * breathe) + vec3(0.45, 0.9, 1.0) * gridLine * 0.6;
+        }
     }
 
 #ifdef SOLID

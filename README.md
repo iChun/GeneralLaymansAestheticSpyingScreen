@@ -7,6 +7,18 @@ GLASS turns walls of glass into screens. Name a channel on a **GLASS Terminal**,
 give the projector a redstone signal, and the screen spreads across the connected **GLASS Extensions** and shows
 what the terminal sees. **GLASS Wireless Extensions** let a projector draw a floating screen between them.
 
+This fork adds a few things on top:
+
+- **Cloak.** A projector in cloak mode shows on its glass what lies behind it, so the glass, and whatever is behind
+  it, disappears. With four wireless extensions in a rectangle it raises a **cloak field**: walls and a roof that hide
+  everything between them. The ground underneath is rebuilt from its surroundings.
+- **Scene Selector.** Switches a screen between channels, with a wipe across the glass.
+- **Hologram kit.** The **Holo Scanner** scans an area into a **Projection Crystal**; a **Holo Projector** with
+  **Holo Emitters** projects it as a hologram (classic, blue or solid).
+- **Holo Cube.** Set it down and right-click it: it scans the room around it with a wave of light, and takes a
+  360 degree panorama. Set it down anywhere and right-click it again: the room is projected 1:1 as a solid
+  simulation you can walk into, with a blue, dissolving edge, and the panorama as a dome around it.
+
 ## Original author and credit
 
 - **Original author:** iChun
@@ -56,6 +68,12 @@ What this means for this fork:
   - Server settings in `config/generallaymansaestheticspyingscreen.json` (channels per player, wrong passwords per
     minute).
 - New sci-fi style for every GLASS screen.
+- New blocks and items: cloak mode and cloak fields, the Scene Selector, the hologram kit (Holo Scanner, Holo
+  Projector, Holo Emitter, Projection Crystal) and the Holo Cube, with Blockbench models (sources in `blockbench/`).
+- Wireless extensions have their own screen: what they are connected to, disconnect, locate, link.
+- The back of a floating screen and the inside of a cloak field show glowing edges and a nano grid.
+- Holo Cube panoramas are kept in the world folder (`glass_panoramas/`), and cached by clients in
+  `glass_panoramas/` in the game folder.
 
 ## Requirements
 
@@ -80,4 +98,10 @@ To run the in-game test, which builds a screen in a test world and saves screens
 
 ```bash
 ./gradlew runClientGameTest
+```
+
+To run the dedicated server tests (the mod without any client code):
+
+```bash
+./gradlew runGameTest
 ```

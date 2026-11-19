@@ -22,10 +22,11 @@ loom {
 
 fabricApi {
 	// In-game client tests (src/gametest): ./gradlew runClientGameTest
+	// Dedicated server tests (no client code): ./gradlew runGameTest
 	configureTests {
 		createSourceSet = true
 		modId = "glass-test"
-		enableGameTests = false
+		enableGameTests = true
 		enableClientGameTests = true
 		eula = true
 	}

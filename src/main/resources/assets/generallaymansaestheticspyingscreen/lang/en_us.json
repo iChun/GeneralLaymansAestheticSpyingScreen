@@ -141,15 +141,15 @@
   "glass.msg.scanNotLoaded": "Part of that area is not loaded.",
   "glass.msg.scanned": "Scanned %s.",
   "glass.msg.emittersLinked": "%s emitter(s) linked.",
-  "item.generallaymansaestheticspyingscreen.holo_drone": "Holo Cube",
-  "entity.generallaymansaestheticspyingscreen.holo_drone": "Holo Cube",
-  "glass.tooltip.drone.empty": "Set it down, then right-click it to scan the room around it",
-  "glass.tooltip.drone.scan": "Room scan (%s x %s x %s) - set it down, then right-click it to project",
-  "glass.ui.drone.scanName": "Room scan",
+  "item.generallaymansaestheticspyingscreen.holo_cube": "Holo Cube",
+  "entity.generallaymansaestheticspyingscreen.holo_cube": "Holo Cube",
+  "glass.tooltip.cube.empty": "Set it down, then right-click it to scan the room around it",
+  "glass.tooltip.cube.scan": "Room scan (%s x %s x %s) - set it down, then right-click it to project",
+  "glass.ui.cube.scanName": "Room scan",
   "glass.msg.scanNoRoom": "Set the cube down in an open space to scan it.",
   "glass.msg.roomScanned": "Room scanned. Right-click the cube to project it.",
   "glass.msg.scanWiped": "Scan wiped.",
-  "glass.msg.dronePlaceHint": "Right-click a block to set the cube down (sneak + right-click to wipe the scan).",
+  "glass.msg.cubePlaceHint": "Right-click a block to set the cube down (sneak + right-click to wipe the scan).",
   "glass.ui.fieldOn": "FIELD: ON",
   "glass.ui.fieldOff": "FIELD: OFF",
   "glass.ui.fieldHeight": "%s HIGH",
@@ -169,5 +169,5 @@
   "glass.msg.pickLinked": "Pick a connected projector first.",
   "glass.msg.projectorFull": "That projector has as many extensions as it can take.",
   "glass.msg.located": "Look around: the lines show where it is.",
-  "glass.msg.dronePlaceEmpty": "Right-click a block to set the cube down, then right-click the cube to scan the room."
+  "glass.msg.cubePlaceEmpty": "Right-click a block to set the cube down, then right-click the cube to scan the room."
 }

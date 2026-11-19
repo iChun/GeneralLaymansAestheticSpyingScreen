@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import ryzlar.glass.GlassRegistry;
 import ryzlar.glass.client.holo.HoloProjectorScreen;
 import ryzlar.glass.client.holo.HoloScannerScreen;
-import ryzlar.glass.holo.HoloDroneEntity;
+import ryzlar.glass.holo.HoloCubeEntity;
 import ryzlar.glass.holo.HoloNetworking;
 import ryzlar.glass.holo.HoloProjectionData;
 import ryzlar.glass.holo.HoloProjectorBlockEntity;
@@ -649,15 +649,15 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("fill 112 -61 -24 140 -61 12 minecraft:white_concrete");
             server.runCommand("tp @p 103.5 -60 -5.5 180 20");
             settle(singleplayer, context);
-            server.runCommand("item replace entity @p weapon.mainhand with generallaymansaestheticspyingscreen:holo_drone");
+            server.runCommand("item replace entity @p weapon.mainhand with generallaymansaestheticspyingscreen:holo_cube");
             context.waitTicks(5);
             BlockPos roomFloor = new BlockPos(103, -61, -8);
             context.runOnClient(mc -> mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND,
                     new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(roomFloor).add(0, 0.5, 0), net.minecraft.core.Direction.UP, roomFloor, false)));
             context.waitTicks(5);
             net.minecraft.world.phys.AABB room = new net.minecraft.world.phys.AABB(100, -62, -11, 107, -55, -3);
-            check(server.computeOnServer(s -> !s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).isEmpty()), "the empty cube is set down in the room");
-            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).forEach(d -> d.scanFor(player(s))));
+            check(server.computeOnServer(s -> !s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).isEmpty()), "the empty cube is set down in the room");
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).forEach(d -> d.scanFor(player(s))));
             int scanWaited = 0;
             for(int tick : new int[] { 8, 20, 35 })
             {
@@ -669,7 +669,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             for(int i = 0; i < 40 && !scanned; i++)
             {
                 context.waitTicks(5);
-                scanned = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).stream().anyMatch(d -> d.scan() != null));
+                scanned = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream().anyMatch(d -> d.scan() != null));
             }
             check(scanned, "the cube scans the room around it");
             context.waitTicks(4);
@@ -678,18 +678,18 @@ public class GlassClientGameTest implements FabricClientGameTest
             for(int i = 0; i < 40 && !panorama; i++)
             {
                 context.waitTicks(5);
-                panorama = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).stream()
+                panorama = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream()
                         .anyMatch(d -> d.scan() != null && ryzlar.glass.holo.PanoramaStore.has(s, d.scan().id())));
             }
             check(panorama, "the cube takes a 360 degree panorama and keeps it with the scan");
             //Pick it up (with its scan) and take it in hand again.
-            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).forEach(d -> d.startPickUp(player(s))));
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).forEach(d -> d.startPickUp(player(s))));
             context.waitTicks(3);
             server.runOnServer(s -> {
                 for(int i = 0; i < player(s).getInventory().getContainerSize(); i++)
                 {
                     ItemStack stack = player(s).getInventory().getItem(i);
-                    if(stack.is(GlassRegistry.HOLO_DRONE) && stack.get(GlassRegistry.DRONE_SCAN) != null)
+                    if(stack.is(GlassRegistry.HOLO_CUBE) && stack.get(GlassRegistry.CUBE_SCAN) != null)
                     {
                         player(s).getInventory().setItem(i, ItemStack.EMPTY);
                         player(s).setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, stack);
@@ -697,7 +697,7 @@ public class GlassClientGameTest implements FabricClientGameTest
                     }
                 }
             });
-            check(server.computeOnServer(s -> player(s).getMainHandItem().get(GlassRegistry.DRONE_SCAN) != null), "the cube is picked up with its scan");
+            check(server.computeOnServer(s -> player(s).getMainHandItem().get(GlassRegistry.CUBE_SCAN) != null), "the cube is picked up with its scan");
 
             //Set it down in the open and switch it on: the room builds up around it, slowly, as a solid simulation.
             server.runCommand("tp @p 126.5 -60 7.5 180 0");
@@ -707,48 +707,48 @@ public class GlassClientGameTest implements FabricClientGameTest
             context.runOnClient(mc -> mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND,
                     new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(ground).add(0, 0.5, 0), net.minecraft.core.Direction.UP, ground, false)));
             context.waitTicks(10);
-            check(server.computeOnServer(s -> !s.overworld().getEntitiesOfClass(HoloDroneEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).isEmpty()),
-                    "the drone is set down on the ground");
-            context.takeScreenshot("drone_on_ground");
-            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).forEach(HoloDroneEntity::toggle));
-            int droneWaited = 0;
+            check(server.computeOnServer(s -> !s.overworld().getEntitiesOfClass(HoloCubeEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).isEmpty()),
+                    "the cube is set down on the ground");
+            context.takeScreenshot("cube_on_ground");
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).forEach(HoloCubeEntity::toggle));
+            int cubeWaited = 0;
             for(int tick : new int[] { 20, 45, 100 })
             {
-                context.waitTicks(tick - droneWaited);
-                droneWaited = tick;
-                context.takeScreenshot("drone_on_tick_" + tick);
+                context.waitTicks(tick - cubeWaited);
+                cubeWaited = tick;
+                context.takeScreenshot("cube_on_tick_" + tick);
             }
             server.runCommand("tp @p 126.5 -60 4.5 135 10");
             context.waitTicks(20);
-            context.takeScreenshot("drone_room_inside");
+            context.takeScreenshot("cube_room_inside");
             //Inside the simulation the dome shows the scanned surroundings (through the window, and where the edge falls apart).
             for(int yaw : new int[] { 0, 90, 180, 270 })
             {
                 server.runCommand("tp @p 126.5 -60 4.5 " + yaw + " -5");
                 context.waitTicks(4);
-                context.takeScreenshot("drone_dome_" + yaw);
+                context.takeScreenshot("cube_dome_" + yaw);
             }
             server.runCommand("tp @p 126.5 -60 10.5 180 10");
             context.waitTicks(10);
-            //Switch it off: the room shrinks back into the drone.
-            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).forEach(HoloDroneEntity::toggle));
+            //Switch it off: the room shrinks back into the cube.
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).forEach(HoloCubeEntity::toggle));
             context.waitTicks(30);
-            context.takeScreenshot("drone_off_tick_30");
+            context.takeScreenshot("cube_off_tick_30");
             context.waitTicks(80);
             //Pick it up again: it keeps its scan.
-            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).forEach(d -> d.startPickUp(player(s))));
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).forEach(d -> d.startPickUp(player(s))));
             context.waitTicks(5);
             check(server.computeOnServer(s -> {
                 for(int i = 0; i < player(s).getInventory().getContainerSize(); i++)
                 {
                     ItemStack stack = player(s).getInventory().getItem(i);
-                    if(stack.is(GlassRegistry.HOLO_DRONE) && stack.get(GlassRegistry.DRONE_SCAN) != null)
+                    if(stack.is(GlassRegistry.HOLO_CUBE) && stack.get(GlassRegistry.CUBE_SCAN) != null)
                     {
                         return true;
                     }
                 }
                 return false;
-            }), "the drone is picked up with its scan");
+            }), "the cube is picked up with its scan");
             server.runCommand("tp @p 0.5 -60 8.5 180 0");
             settle(singleplayer, context);
             context.waitTicks(20);

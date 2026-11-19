@@ -14,8 +14,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import ryzlar.glass.client.render.GlassRenderTypes;
-import ryzlar.glass.holo.DroneScan;
-import ryzlar.glass.holo.HoloDroneEntity;
+import ryzlar.glass.holo.CubeScan;
+import ryzlar.glass.holo.HoloCubeEntity;
 import ryzlar.glass.holo.HoloProjectorBlockEntity;
 
 import java.util.HashMap;
@@ -24,11 +24,11 @@ import java.util.Map;
 /**
  * Draws a holo cube on the ground (its Blockbench model: it rises a little while it projects, its frame turning and its core
  * breathing) and its room: a solid 1:1
- * simulation laid around it. The nano wave grows slowly out of the drone, and shrinks back into it when switched off. The
+ * simulation laid around it. The nano wave grows slowly out of the cube, and shrinks back into it when switched off. The
  * room's edge falls apart into blue nano pixels (glass_holo.fsh) and sheds little blue shards, so it is plain where the
  * simulation ends.
  */
-public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer.State>
+public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRenderer.State>
 {
     private static final float CUBE_SCALE = 0.55F;
     /** The cube model's bottom, from its centre, in blocks (it spans 3..13 of 16). */
@@ -48,9 +48,9 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
         float brightness = 1F;
         float spin;
         @Nullable
-        DroneScan scan;
+        CubeScan scan;
         @Nullable
-        HoloDroneEntity entity;
+        HoloCubeEntity entity;
         final net.minecraft.client.renderer.item.ItemStackRenderState frame = new net.minecraft.client.renderer.item.ItemStackRenderState();
         final net.minecraft.client.renderer.item.ItemStackRenderState core = new net.minecraft.client.renderer.item.ItemStackRenderState();
         float hover;
@@ -58,6 +58,7 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
         float pulse;
         float time;
         boolean scanning;
+        boolean showBounds;
         float scanRadius;
         float scanFade;
         float scanFlash;
@@ -79,7 +80,7 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
 
     private static net.minecraft.world.item.ItemStack part(String model)
     {
-        net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(ryzlar.glass.GlassRegistry.HOLO_DRONE);
+        net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(ryzlar.glass.GlassRegistry.HOLO_CUBE);
         stack.set(net.minecraft.core.component.DataComponents.ITEM_MODEL, ryzlar.glass.Glass.id(model));
         return stack;
     }
@@ -88,7 +89,7 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
 
     private final Map<Integer, Entry> holograms = new HashMap<>();
 
-    public DroneRenderer(EntityRendererProvider.Context context)
+    public HoloCubeRenderer(EntityRendererProvider.Context context)
     {
         super(context);
         itemModels = context.getItemModelResolver();
@@ -101,7 +102,7 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
     }
 
     @Override
-    public void extractRenderState(HoloDroneEntity entity, State state, float partialTick)
+    public void extractRenderState(HoloCubeEntity entity, State state, float partialTick)
     {
         super.extractRenderState(entity, state, partialTick);
         state.entityId = entity.getId();
@@ -110,7 +111,7 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
         state.scan = entity.scan();
         state.entity = entity;
         state.radius = entity.waveRadius(partialTick);
-        //Lit like a block where the drone lies (day, night, torches).
+        //Lit like a block where the cube lies (day, night, torches).
         state.brightness = 0.25F + 0.75F * entity.level().getMaxLocalRawBrightness(entity.anchor()) / 15F;
         long now = entity.level().getGameTime();
         float time = now + partialTick;
@@ -137,6 +138,8 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
         state.coreSpin = -time * 2.5F;
         state.pulse = 1F + state.hover * 0.08F * (float)Math.sin(time * 0.2F);
         state.scanning = entity.scanning();
+        //Looking at a cube that has not scanned yet: show how far its scan can reach.
+        state.showBounds = entity.scan() == null && !entity.scanning() && Minecraft.getInstance().crosshairPickEntity == entity;
         state.room = entity.clientRoom;
         state.scanStart = entity.clientScanStart;
         state.scanRadius = entity.scanRadius(partialTick);
@@ -160,9 +163,9 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
         itemModels.updateForNonLiving(state.core, CORE, net.minecraft.world.item.ItemDisplayContext.NONE, entity);
     }
 
-    /** The room is big and the drone small: keep drawing while the room may be on screen. */
+    /** The room is big and the cube small: keep drawing while the room may be on screen. */
     @Override
-    public boolean shouldRender(HoloDroneEntity entity, Frustum frustum, double x, double y, double z)
+    public boolean shouldRender(HoloCubeEntity entity, Frustum frustum, double x, double y, double z)
     {
         return entity.shouldRender(x, y, z);
     }
@@ -182,6 +185,10 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
         state.core.render(poseStack, buffers, 0xF000F0, OverlayTexture.NO_OVERLAY);
         poseStack.popPose();
         drawScan(state, poseStack, buffers, CUBE_BOTTOM * CUBE_SCALE + state.hover * HOVER + bob);
+        if(state.showBounds)
+        {
+            drawBounds(state, poseStack, buffers);
+        }
 
         ClientLevel level = Minecraft.getInstance().level;
         if(state.scan == null || state.radius <= 0F || level == null)
@@ -258,6 +265,42 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
                 consumer.addVertex(pose, c[0], c[1], c[2]).setColor(255, 255, 255, alpha);
             }
         }
+    }
+
+    /** The box a scan can reach (the room is found inside it), pulsing faintly, with its floor marked. */
+    private static void drawBounds(State state, PoseStack poseStack, MultiBufferSource buffers)
+    {
+        com.mojang.blaze3d.vertex.VertexConsumer lines = buffers.getBuffer(net.minecraft.client.renderer.RenderType.lines());
+        poseStack.pushPose();
+        poseStack.translate(state.anchor.getX() - state.x, state.anchor.getY() - state.y, state.anchor.getZ() - state.z);
+        PoseStack.Pose pose = poseStack.last();
+        float pulse = 0.5F + 0.5F * (float)Math.sin(state.time * 0.15F);
+        int colour = (int)(90 + 90 * pulse) << 24 | 0x3CE6FF;
+        float x0 = -ryzlar.glass.holo.RoomScan.HALF_WIDTH, x1 = ryzlar.glass.holo.RoomScan.HALF_WIDTH;
+        float y0 = -ryzlar.glass.holo.RoomScan.BELOW, y1 = ryzlar.glass.holo.RoomScan.ABOVE + 1;
+        float z0 = x0, z1 = x1;
+        float[][] corners = { { x0, z0 }, { x1, z0 }, { x1, z1 }, { x0, z1 } };
+        for(int i = 0; i < 4; i++)
+        {
+            float[] a = corners[i], b = corners[(i + 1) % 4];
+            boundsLine(lines, pose, a[0], y0, a[1], b[0], y0, b[1], colour);
+            boundsLine(lines, pose, a[0], y1, a[1], b[0], y1, b[1], colour);
+            boundsLine(lines, pose, a[0], y0, a[1], a[0], y1, a[1], colour);
+            //The cube's own floor level, round the box.
+            boundsLine(lines, pose, a[0], 0F, a[1], b[0], 0F, b[1], (colour & 0xFFFFFF) | (int)(40 + 50 * pulse) << 24);
+        }
+        poseStack.popPose();
+    }
+
+    private static void boundsLine(com.mojang.blaze3d.vertex.VertexConsumer lines, PoseStack.Pose pose, float ax, float ay, float az, float bx, float by, float bz, int colour)
+    {
+        float nx = bx - ax, ny = by - ay, nz = bz - az;
+        float length = (float)Math.sqrt(nx * nx + ny * ny + nz * nz);
+        nx /= length;
+        ny /= length;
+        nz /= length;
+        lines.addVertex(pose, ax, ay, az).setColor(colour).setNormal(pose, nx, ny, nz);
+        lines.addVertex(pose, bx, by, bz).setColor(colour).setNormal(pose, nx, ny, nz);
     }
 
     /** The scan running over the real room (see {@link ScanEffect}), and laser lines from the cube to its front. */
@@ -398,10 +441,10 @@ public class DroneRenderer extends EntityRenderer<HoloDroneEntity, DroneRenderer
         return (h >>> 8) / (float)(1 << 24);
     }
 
-    /** The room laid around the drone's block: where the scanner stood goes there, turned the way the player faced. */
+    /** The room laid around the cube's block: where the scanner stood goes there, turned the way the player faced. */
     private HologramRenderer.Hologram hologram(ClientLevel level, State state, HoloClient.ClientProjection projection)
     {
-        DroneScan scan = state.scan;
+        CubeScan scan = state.scan;
         String key = scan.id() + "|" + state.anchor.asLong() + "|" + state.turn;
         Entry entry = holograms.get(state.entityId);
         if(entry == null || !entry.key().equals(key))

@@ -14,8 +14,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import org.jetbrains.annotations.Nullable;
 import ryzlar.glass.Glass;
-import ryzlar.glass.holo.DroneScan;
-import ryzlar.glass.holo.HoloDroneEntity;
+import ryzlar.glass.holo.CubeScan;
+import ryzlar.glass.holo.HoloCubeEntity;
 import ryzlar.glass.holo.HoloNetworking;
 import ryzlar.glass.holo.PanoramaStore;
 
@@ -29,7 +29,7 @@ import java.util.Map;
  * The 360 degree panoramas of holo cube scans, on the client. When a cube this client watched finishes a scan, the world
  * is drawn six times from the cube (front, right, back, left, up, down, like the game's own panorama screenshots) into
  * one picture, three views across and two down, kept in a cache folder and sent to the server for everyone else. A
- * cube projecting that scan shows it as a dome round the room (see {@link DroneRenderer}).
+ * cube projecting that scan shows it as a dome round the room (see {@link HoloCubeRenderer}).
  */
 public final class Panoramas
 {
@@ -40,7 +40,7 @@ public final class Panoramas
 
     private static boolean capturing;
     @Nullable
-    private static HoloDroneEntity pending;
+    private static HoloCubeEntity pending;
     private static final Map<String, ResourceLocation> TEXTURES = new HashMap<>();
     private static final Map<String, Long> REQUESTED = new HashMap<>();
     private static final Map<String, byte[][]> DOWNLOADS = new HashMap<>();
@@ -49,7 +49,7 @@ public final class Panoramas
 
     public static void init()
     {
-        HoloDroneEntity.onClientScanDone = drone -> pending = drone;
+        HoloCubeEntity.onClientScanDone = cube -> pending = cube;
         ClientTickEvents.END_CLIENT_TICK.register(Panoramas::tick);
         ClientPlayNetworking.registerGlobalReceiver(HoloNetworking.PanoramaDownload.TYPE, (payload, context) -> receive(payload));
     }
@@ -170,28 +170,28 @@ public final class Panoramas
 
     private static void tick(Minecraft mc)
     {
-        HoloDroneEntity drone = pending;
+        HoloCubeEntity cube = pending;
         pending = null;
-        if(drone == null || mc.level == null || mc.player == null || drone.isRemoved() || drone.level() != mc.level
-                || drone.distanceToSqr(mc.player) > 64D * 64D)
+        if(cube == null || mc.level == null || mc.player == null || cube.isRemoved() || cube.level() != mc.level
+                || cube.distanceToSqr(mc.player) > 64D * 64D)
         {
             return;
         }
-        DroneScan scan = drone.scan();
+        CubeScan scan = cube.scan();
         if(scan != null && !TEXTURES.containsKey(scan.id()))
         {
-            capture(mc, drone, scan.id());
+            capture(mc, cube, scan.id());
         }
     }
 
     /** Draws the six views from the cube (as Minecraft.grabPanoramixScreenshot does from the player). */
-    private static void capture(Minecraft mc, HoloDroneEntity drone, String id)
+    private static void capture(Minecraft mc, HoloCubeEntity cube, String id)
     {
         Window window = mc.getWindow();
         RenderTarget target = mc.getMainRenderTarget();
         int width = window.getWidth(), height = window.getHeight();
         Entity camera = mc.getCameraEntity();
-        float yRot = drone.getYRot(), xRot = drone.getXRot(), yRotO = drone.yRotO, xRotO = drone.xRotO;
+        float yRot = cube.getYRot(), xRot = cube.getXRot(), yRotO = cube.yRotO, xRotO = cube.xRotO;
         boolean invisible = mc.player.isInvisible();
         NativeImage atlas = new NativeImage(FACE * 3, FACE * 2, false);
         int[] done = { 0 };
@@ -203,7 +203,7 @@ public final class Panoramas
             window.setWidth(RENDER);
             window.setHeight(RENDER);
             target.resize(RENDER, RENDER);
-            mc.setCameraEntity(drone);
+            mc.setCameraEntity(cube);
             mc.player.setInvisible(true);
             for(int face = 0; face < 6; face++)
             {
@@ -216,10 +216,10 @@ public final class Panoramas
                     default -> 0F;
                 };
                 float pitch = face == 4 ? -90F : face == 5 ? 90F : 0F;
-                drone.setYRot(yaw);
-                drone.setXRot(pitch);
-                drone.yRotO = yaw;
-                drone.xRotO = pitch;
+                cube.setYRot(yaw);
+                cube.setXRot(pitch);
+                cube.yRotO = yaw;
+                cube.xRotO = pitch;
                 mc.gameRenderer.renderLevel(DeltaTracker.ONE);
                 int cellX = face % 3 * FACE, cellY = face / 3 * FACE;
                 Screenshot.takeScreenshot(target, RENDER / FACE, image -> {
@@ -247,10 +247,10 @@ public final class Panoramas
         }
         finally
         {
-            drone.setYRot(yRot);
-            drone.setXRot(xRot);
-            drone.yRotO = yRotO;
-            drone.xRotO = xRotO;
+            cube.setYRot(yRot);
+            cube.setXRot(xRot);
+            cube.yRotO = yRotO;
+            cube.xRotO = xRotO;
             mc.setCameraEntity(camera);
             mc.player.setInvisible(invisible);
             mc.gameRenderer.setRenderBlockOutline(true);

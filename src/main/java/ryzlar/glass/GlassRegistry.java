@@ -14,10 +14,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
-import ryzlar.glass.holo.DroneScan;
+import ryzlar.glass.holo.CubeScan;
 import ryzlar.glass.holo.HoloBlocks;
-import ryzlar.glass.holo.HoloDroneEntity;
-import ryzlar.glass.holo.HoloDroneItem;
+import ryzlar.glass.holo.HoloCubeEntity;
+import ryzlar.glass.holo.HoloCubeItem;
 import ryzlar.glass.holo.HoloProjectorBlockEntity;
 import ryzlar.glass.holo.HoloScannerBlockEntity;
 import ryzlar.glass.holo.ProjectionRef;
@@ -61,12 +61,12 @@ public final class GlassRegistry
     /** What a projection crystal holds. */
     public static final DataComponentType<ProjectionRef> PROJECTION = Registry.register(BuiltInRegistries.DATA_COMPONENT_TYPE, Glass.id("projection"),
             DataComponentType.<ProjectionRef>builder().persistent(ProjectionRef.CODEC).networkSynchronized(ProjectionRef.STREAM_CODEC).build());
-    /** A holo drone's room scan. */
-    public static final DataComponentType<DroneScan> DRONE_SCAN = Registry.register(BuiltInRegistries.DATA_COMPONENT_TYPE, Glass.id("drone_scan"),
-            DataComponentType.<DroneScan>builder().persistent(DroneScan.CODEC).networkSynchronized(DroneScan.STREAM_CODEC).build());
-    public static final Item HOLO_DRONE = registerItem("holo_drone", properties -> new HoloDroneItem(properties.stacksTo(1).rarity(Rarity.RARE)));
-    public static final EntityType<HoloDroneEntity> HOLO_DRONE_ENTITY = registerEntity("holo_drone",
-            EntityType.Builder.<HoloDroneEntity>of(HoloDroneEntity::new, MobCategory.MISC).sized(0.5F, 0.5F).clientTrackingRange(10).updateInterval(2));
+    /** A holo cube's room scan. */
+    public static final DataComponentType<CubeScan> CUBE_SCAN = Registry.register(BuiltInRegistries.DATA_COMPONENT_TYPE, Glass.id("cube_scan"),
+            DataComponentType.<CubeScan>builder().persistent(CubeScan.CODEC).networkSynchronized(CubeScan.STREAM_CODEC).build());
+    public static final Item HOLO_CUBE = registerItem("holo_cube", properties -> new HoloCubeItem(properties.stacksTo(1).rarity(Rarity.RARE)));
+    public static final EntityType<HoloCubeEntity> HOLO_CUBE_ENTITY = registerEntity("holo_cube",
+            EntityType.Builder.<HoloCubeEntity>of(HoloCubeEntity::new, MobCategory.MISC).sized(0.5F, 0.5F).clientTrackingRange(10).updateInterval(2));
     public static final Item PROJECTION_CRYSTAL = registerItem("projection_crystal", properties -> new Item(properties.stacksTo(1).rarity(Rarity.RARE)));
 
     public static final BlockEntityType<GlassBaseBlockEntity> GLASS_EXTENSION_BE = registerBlockEntity("glass_extension",
@@ -122,6 +122,10 @@ public final class GlassRegistry
 
     public static void init()
     {
+        //The holo cube was the holo drone: worlds from before keep their cubes, set down or carried, and their scans.
+        BuiltInRegistries.ITEM.addAlias(Glass.id("holo_drone"), Glass.id("holo_cube"));
+        BuiltInRegistries.ENTITY_TYPE.addAlias(Glass.id("holo_drone"), Glass.id("holo_cube"));
+        BuiltInRegistries.DATA_COMPONENT_TYPE.addAlias(Glass.id("drone_scan"), Glass.id("cube_scan"));
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.REDSTONE_BLOCKS).register(entries -> {
             entries.accept(GLASS_PROJECTOR);
             entries.accept(GLASS_WIRELESS_EXTENSION);
@@ -131,7 +135,7 @@ public final class GlassRegistry
             entries.accept(HOLO_SCANNER);
             entries.accept(HOLO_PROJECTOR);
             entries.accept(HOLO_EMITTER);
-            entries.accept(HOLO_DRONE);
+            entries.accept(HOLO_CUBE);
         });
     }
 }

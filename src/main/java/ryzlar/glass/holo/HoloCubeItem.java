@@ -15,11 +15,11 @@ import ryzlar.glass.network.GlassNetworking;
 
 /**
  * The holo cube. Right-click a block to set it down there; then right-click the cube to scan the room around it, and
- * once it has a scan, to project it (see {@link HoloDroneEntity}). Sneak + right-click with a scanned cube wipes its scan.
+ * once it has a scan, to project it (see {@link HoloCubeEntity}). Sneak + right-click with a scanned cube wipes its scan.
  */
-public class HoloDroneItem extends Item
+public class HoloCubeItem extends Item
 {
-    public HoloDroneItem(Properties properties)
+    public HoloCubeItem(Properties properties)
     {
         super(properties);
     }
@@ -29,7 +29,7 @@ public class HoloDroneItem extends Item
     public InteractionResult useOn(UseOnContext context)
     {
         ItemStack stack = context.getItemInHand();
-        DroneScan scan = stack.get(GlassRegistry.DRONE_SCAN);
+        CubeScan scan = stack.get(GlassRegistry.CUBE_SCAN);
         Player player = context.getPlayer();
         if(player == null || (scan != null && player.isSecondaryUseActive()))
         {
@@ -44,7 +44,7 @@ public class HoloDroneItem extends Item
         }
         if(player instanceof ServerPlayer serverPlayer)
         {
-            HoloDroneEntity.place(serverPlayer, pos, stack.copyWithCount(1), scan);
+            HoloCubeEntity.place(serverPlayer, pos, stack.copyWithCount(1), scan);
             stack.shrink(1);
         }
         return InteractionResult.SUCCESS;
@@ -58,13 +58,13 @@ public class HoloDroneItem extends Item
             return InteractionResult.SUCCESS;
         }
         ItemStack stack = player.getItemInHand(hand);
-        if(stack.get(GlassRegistry.DRONE_SCAN) != null && player.isSecondaryUseActive())
+        if(stack.get(GlassRegistry.CUBE_SCAN) != null && player.isSecondaryUseActive())
         {
-            stack.remove(GlassRegistry.DRONE_SCAN);
+            stack.remove(GlassRegistry.CUBE_SCAN);
             GlassNetworking.reply(serverPlayer, GlassNetworkManager.Result.ok("glass.msg.scanWiped", ""));
             return InteractionResult.SUCCESS;
         }
-        GlassNetworking.reply(serverPlayer, GlassNetworkManager.Result.ok(stack.get(GlassRegistry.DRONE_SCAN) != null ? "glass.msg.dronePlaceHint" : "glass.msg.dronePlaceEmpty", ""));
+        GlassNetworking.reply(serverPlayer, GlassNetworkManager.Result.ok(stack.get(GlassRegistry.CUBE_SCAN) != null ? "glass.msg.cubePlaceHint" : "glass.msg.cubePlaceEmpty", ""));
         return InteractionResult.SUCCESS;
     }
 }

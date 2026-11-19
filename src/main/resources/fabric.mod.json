@@ -3,7 +3,7 @@
   "id": "generallaymansaestheticspyingscreen",
   "version": "${version}",
   "name": "GeneralLaymansAestheticSpyingScreen",
-  "description": "Also known as GLASS. Turn walls of glass into screens that show what a far-away terminal sees. Fabric port of iChun's mod.",
+  "description": "Also known as GLASS. Turn walls of glass into screens that show what a far-away terminal sees, cloak your base behind them, and project holograms and walk-in simulations of rooms. Fabric port of iChun's mod, with additions.",
   "authors": [
     "iChun (original mod)",
     "ryzlar (Fabric port)"

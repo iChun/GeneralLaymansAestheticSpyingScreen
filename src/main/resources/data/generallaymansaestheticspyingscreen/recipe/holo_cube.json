@@ -2,18 +2,18 @@
   "type": "minecraft:crafting_shaped",
   "category": "redstone",
   "pattern": [
-    "FAF",
-    "IOI",
-    " I "
+    "IAI",
+    "GOG",
+    "IAI"
   ],
   "key": {
-    "F": "minecraft:feather",
-    "A": "minecraft:amethyst_shard",
     "I": "minecraft:iron_ingot",
+    "A": "minecraft:amethyst_shard",
+    "G": "minecraft:glass",
     "O": "minecraft:observer"
   },
   "result": {
-    "id": "generallaymansaestheticspyingscreen:holo_drone",
+    "id": "generallaymansaestheticspyingscreen:holo_cube",
     "count": 1
   }
 }

@@ -73,7 +73,7 @@ public final class HoloClient
         });
 
         BlockEntityRenderers.register(GlassRegistry.HOLO_PROJECTOR_BE, HologramRenderer::new);
-        net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(GlassRegistry.HOLO_DRONE_ENTITY, DroneRenderer::new);
+        net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(GlassRegistry.HOLO_CUBE_ENTITY, HoloCubeRenderer::new);
 
         ItemTooltipCallback.EVENT.register((stack, context, type, lines) -> {
             ProjectionRef ref = stack.get(GlassRegistry.PROJECTION);
@@ -81,11 +81,11 @@ public final class HoloClient
             {
                 lines.add(Component.translatable("glass.tooltip.projection", ref.name(), ref.sizeX(), ref.sizeY(), ref.sizeZ()).withStyle(ChatFormatting.AQUA));
             }
-            if(stack.is(GlassRegistry.HOLO_DRONE))
+            if(stack.is(GlassRegistry.HOLO_CUBE))
             {
-                ryzlar.glass.holo.DroneScan scan = stack.get(GlassRegistry.DRONE_SCAN);
-                lines.add(scan == null ? Component.translatable("glass.tooltip.drone.empty").withStyle(ChatFormatting.GRAY)
-                        : Component.translatable("glass.tooltip.drone.scan", scan.sizeX(), scan.sizeY(), scan.sizeZ()).withStyle(ChatFormatting.AQUA));
+                ryzlar.glass.holo.CubeScan scan = stack.get(GlassRegistry.CUBE_SCAN);
+                lines.add(scan == null ? Component.translatable("glass.tooltip.cube.empty").withStyle(ChatFormatting.GRAY)
+                        : Component.translatable("glass.tooltip.cube.scan", scan.sizeX(), scan.sizeY(), scan.sizeZ()).withStyle(ChatFormatting.AQUA));
             }
         });
 
