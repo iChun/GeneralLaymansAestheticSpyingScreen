@@ -103,7 +103,7 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
 
     /** minX, y, minZ, maxX, maxZ of four positions forming a rectangle's corners on one level, or null. */
     @Nullable
-    private static int[] fieldCorners(List<BlockPos> positions)
+    public static int[] fieldCorners(List<BlockPos> positions)
     {
         if(positions.size() != 4)
         {

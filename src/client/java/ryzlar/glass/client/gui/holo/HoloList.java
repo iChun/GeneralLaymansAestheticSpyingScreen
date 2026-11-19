@@ -126,6 +126,26 @@ public class HoloList<T> extends AbstractWidget
         }
     }
 
+    /** Scrolls just enough to show the row. */
+    public void ensureVisible(int index)
+    {
+        if(index < 0 || index >= items.size())
+        {
+            return;
+        }
+        int rowTop = index * ROW;
+        int view = getHeight() - 4;
+        if(rowTop < scroll)
+        {
+            scroll = rowTop;
+        }
+        else if(rowTop + ROW > scroll + view)
+        {
+            scroll = rowTop + ROW - view;
+        }
+        scroll = Mth.clamp(scroll, 0, maxScroll());
+    }
+
     private int maxScroll()
     {
         return Math.max(0, items.size() * ROW - (getHeight() - 4));
