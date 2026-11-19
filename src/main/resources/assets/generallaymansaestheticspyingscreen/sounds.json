@@ -5,5 +5,87 @@
     "sounds": [
       "generallaymansaestheticspyingscreen:amb"
     ]
+  },
+  "nano_assemble": {
+    "category": "block",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:nano_assemble"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.nano_assemble"
+  },
+  "nano_dissolve": {
+    "category": "block",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:nano_dissolve"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.nano_dissolve"
+  },
+  "cloak_engage": {
+    "category": "block",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:cloak_engage"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.cloak_engage"
+  },
+  "field_rise": {
+    "category": "block",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:field_rise"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.field_rise"
+  },
+  "scan_start": {
+    "category": "neutral",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:scan_start"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.scan_start"
+  },
+  "scan_sweep": {
+    "category": "neutral",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:scan_sweep"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.scan_sweep"
+  },
+  "scan_complete": {
+    "category": "neutral",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:scan_complete"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.scan_complete"
+  },
+  "sim_open": {
+    "category": "neutral",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:sim_open"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.sim_open"
+  },
+  "sim_close": {
+    "category": "neutral",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:sim_close"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.sim_close"
+  },
+  "ui_click": {
+    "category": "master",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:ui_click"
+    ]
+  },
+  "ui_open": {
+    "category": "master",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:ui_open"
+    ]
+  },
+  "ripple": {
+    "category": "block",
+    "sounds": [
+      "generallaymansaestheticspyingscreen:ripple"
+    ],
+    "subtitle": "subtitles.generallaymansaestheticspyingscreen.ripple"
   }
 }

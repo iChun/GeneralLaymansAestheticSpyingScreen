@@ -22,6 +22,12 @@ public class HoloButton extends Button
         this.danger = danger;
     }
 
+    @Override
+    public void playDownSound(net.minecraft.client.sounds.SoundManager sounds)
+    {
+        sounds.play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(ryzlar.glass.GlassSounds.UI_CLICK, danger ? 0.8F : 1F));
+    }
+
     /** Draws the button lit, for tabs and toggles. */
     public HoloButton selected(boolean selected)
     {

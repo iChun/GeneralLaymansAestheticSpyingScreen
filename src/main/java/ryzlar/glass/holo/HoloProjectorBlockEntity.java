@@ -223,11 +223,13 @@ public class HoloProjectorBlockEntity extends BlockEntity
             if(clientLoaded && active && !wasActive)
             {
                 onStart = level.getGameTime();
+                playLocal(ryzlar.glass.GlassSounds.NANO_ASSEMBLE);
             }
             else if(clientLoaded && !active && wasActive)
             {
                 offRadius = onRadius(0F);
                 offStart = level.getGameTime();
+                playLocal(ryzlar.glass.GlassSounds.NANO_DISSOLVE);
             }
             clientLoaded = true;
         }
@@ -245,5 +247,12 @@ public class HoloProjectorBlockEntity extends BlockEntity
     public Packet<ClientGamePacketListener> getUpdatePacket()
     {
         return ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    /** Client: a hologram builds and falls apart a little lower than a screen. */
+    private void playLocal(net.minecraft.sounds.SoundEvent sound)
+    {
+        BlockPos pos = getBlockPos();
+        level.playLocalSound(pos.getX() + 0.5D, pos.getY() + 1D, pos.getZ() + 0.5D, sound, net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 0.8F, false);
     }
 }

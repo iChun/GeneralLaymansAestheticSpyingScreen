@@ -169,5 +169,15 @@
   "glass.msg.pickLinked": "Pick a connected projector first.",
   "glass.msg.projectorFull": "That projector has as many extensions as it can take.",
   "glass.msg.located": "Look around: the lines show where it is.",
-  "glass.msg.cubePlaceEmpty": "Right-click a block to set the cube down, then right-click the cube to scan the room."
+  "glass.msg.cubePlaceEmpty": "Right-click a block to set the cube down, then right-click the cube to scan the room.",
+  "subtitles.generallaymansaestheticspyingscreen.nano_assemble": "Screen assembles",
+  "subtitles.generallaymansaestheticspyingscreen.nano_dissolve": "Screen dissolves",
+  "subtitles.generallaymansaestheticspyingscreen.cloak_engage": "Cloak bends the light",
+  "subtitles.generallaymansaestheticspyingscreen.field_rise": "Cloak field rises",
+  "subtitles.generallaymansaestheticspyingscreen.scan_start": "Holo cube starts scanning",
+  "subtitles.generallaymansaestheticspyingscreen.scan_sweep": "Holo cube scans",
+  "subtitles.generallaymansaestheticspyingscreen.scan_complete": "Holo cube scan complete",
+  "subtitles.generallaymansaestheticspyingscreen.sim_open": "Simulation opens",
+  "subtitles.generallaymansaestheticspyingscreen.sim_close": "Simulation closes",
+  "subtitles.generallaymansaestheticspyingscreen.ripple": "Screen ripples"
 }

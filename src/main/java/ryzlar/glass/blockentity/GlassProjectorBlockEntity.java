@@ -314,6 +314,15 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         camPos = input.read("camPos", BlockPos.CODEC).orElse(BlockPos.ZERO);
         camFacing = input.read("camFacing", Direction.CODEC).orElse(Direction.NORTH);
         onClientDataReceived(); //again, now the projector's own fields are loaded too
+        if(justSwitchedOn && level != null && level.isClientSide)
+        {
+            //The screen builds itself; a cloak bends the light; a cloak field rises out of the ground.
+            net.minecraft.sounds.SoundEvent sound = cloakFieldBox() != null ? ryzlar.glass.GlassSounds.FIELD_RISE
+                    : cloak ? ryzlar.glass.GlassSounds.CLOAK_ENGAGE : ryzlar.glass.GlassSounds.NANO_ASSEMBLE;
+            BlockPos pos = getBlockPos();
+            level.playLocalSound(pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D, sound, net.minecraft.sounds.SoundSource.BLOCKS, 0.9F, 1F, false);
+        }
+        justSwitchedOn = false;
     }
 
     /** Identifies the camera currently shown, so the client can tell when it switches. */

@@ -90,6 +90,8 @@ public class GlassBaseBlockEntity extends BlockEntity
 
     /** Client: game time this block switched on. For the projector, also when the wave starts growing. */
     public long onStart = Long.MIN_VALUE / 2;
+    /** Client: switched on by the data just loaded (the projector plays the sound once its own data is in too). */
+    protected boolean justSwitchedOn;
 
     /** 0 when the block switched on, 1 once {@link #FADEOUT_TIME} ticks have passed. */
     public float onProgress(float partialTick)
@@ -437,6 +439,7 @@ public class GlassBaseBlockEntity extends BlockEntity
         {
             onStart = level.getGameTime(); //just switched on (not a screen that was already on when the chunk loaded)
             clearSwitchOff(); //switched back on: forget any switch-off still playing (a lever flicked quickly)
+            justSwitchedOn = true;
         }
         onClientDataReceived();
     }

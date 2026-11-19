@@ -49,6 +49,8 @@ public class HoloCubeEntity extends Entity
     /** A scan takes at least, and at most, this long (ticks). */
     private static final int MIN_SCAN_TICKS = 50;
     private static final int MAX_SCAN_TICKS = 180;
+    /** How often the scan pings, in ticks. */
+    private static final int SWEEP_TICKS = 22;
     /** How long picking it up takes while it projects (the room shrinks back into it first), in ticks. */
     public static final int PACK_TICKS = 70;
 
@@ -265,6 +267,11 @@ public class HoloCubeEntity extends Entity
         {
             finishScan();
         }
+        else if(scanning() && scanAge % SWEEP_TICKS == SWEEP_TICKS / 2)
+        {
+            //A sonar ping now and then, rising as the scan goes on.
+            level().playSound(null, getX(), getY(), getZ(), ryzlar.glass.GlassSounds.SCAN_SWEEP, SoundSource.NEUTRAL, 0.6F, 0.9F + 0.35F * scanAge / Math.max(1, scanTicks));
+        }
     }
 
     /** Client: sparks where the scan's light is running over the room. */
@@ -314,7 +321,7 @@ public class HoloCubeEntity extends Entity
         scanTicks = scanTicksFor(room.reach());
         scanner = player.getUUID();
         entityData.set(SCANNING, true);
-        level().playSound(null, getX(), getY(), getZ(), SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 0.8F, 1.6F);
+        level().playSound(null, getX(), getY(), getZ(), ryzlar.glass.GlassSounds.SCAN_START, SoundSource.NEUTRAL, 0.9F, 1F);
     }
 
     /** The light has been everywhere: store the room in the cube. */
@@ -349,7 +356,7 @@ public class HoloCubeEntity extends Entity
         entityData.set(ITEM, item);
         //Projected where it was scanned, the room lies right over itself.
         entityData.set(TURN, 0);
-        level().playSound(null, getX(), getY(), getZ(), SoundEvents.BEACON_POWER_SELECT, SoundSource.BLOCKS, 0.8F, 1.4F);
+        level().playSound(null, getX(), getY(), getZ(), ryzlar.glass.GlassSounds.SCAN_COMPLETE, SoundSource.NEUTRAL, 0.9F, 1F);
         if(scanner != null && serverLevel.getPlayerByUUID(scanner) instanceof ServerPlayer player)
         {
             GlassNetworking.reply(player, GlassNetworkManager.Result.ok("glass.msg.roomScanned", ""));
@@ -361,6 +368,8 @@ public class HoloCubeEntity extends Entity
         if(!entityData.get(PACKING) && !scanning() && scan() != null)
         {
             entityData.set(PROJECTING, !projecting());
+            level().playSound(null, getX(), getY(), getZ(), projecting() ? ryzlar.glass.GlassSounds.SIM_OPEN : ryzlar.glass.GlassSounds.SIM_CLOSE,
+                    SoundSource.NEUTRAL, 1F, 1F);
         }
     }
 
@@ -383,6 +392,7 @@ public class HoloCubeEntity extends Entity
         }
         entityData.set(PACKING, true);
         entityData.set(PROJECTING, false);
+        level().playSound(null, getX(), getY(), getZ(), ryzlar.glass.GlassSounds.SIM_CLOSE, SoundSource.NEUTRAL, 1F, 1.1F);
         packTicks = 0;
     }
 

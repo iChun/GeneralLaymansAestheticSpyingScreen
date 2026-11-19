@@ -116,6 +116,12 @@ public final class ScreenBack
             return;
         }
         RIPPLES.put(key, new Ripple(point, now));
+        Minecraft mc = Minecraft.getInstance();
+        if(mc.level != null)
+        {
+            mc.level.playLocalSound(point.x, point.y, point.z, ryzlar.glass.GlassSounds.RIPPLE, net.minecraft.sounds.SoundSource.BLOCKS,
+                    through ? 0.7F : 0.35F, 0.9F + mc.level.random.nextFloat() * 0.2F, false);
+        }
     }
 
     private static Vec3 nearestOnBoxSurface(AABB box, Vec3 p)

@@ -338,6 +338,7 @@ public final class GlassClientState implements GlassClientBridge
         {
             return;
         }
+        playAt(master, ryzlar.glass.GlassSounds.NANO_ASSEMBLE, 0.55F, 1.3F);
         long now = master.getLevel().getGameTime();
         float radius = coverRadius(key, master);
         long until = now + (long)Math.ceil(radius / GlassBaseBlockEntity.WAVE_SPEED) + 2;
@@ -366,12 +367,19 @@ public final class GlassClientState implements GlassClientBridge
      * The projector of this screen was switched off: the turn-on wave in reverse. The whole screen keeps showing the
      * camera while one wave shrinks from the outermost glass back into the projector; behind it the glass is plain again.
      */
+    private static void playAt(GlassProjectorBlockEntity master, net.minecraft.sounds.SoundEvent sound, float volume, float pitch)
+    {
+        BlockPos pos = master.getBlockPos();
+        master.getLevel().playLocalSound(pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D, sound, net.minecraft.sounds.SoundSource.BLOCKS, volume, pitch, false);
+    }
+
     private void startSwitchOff(String key, GlassProjectorBlockEntity master)
     {
         if(master.getLevel() == null)
         {
             return;
         }
+        playAt(master, ryzlar.glass.GlassSounds.NANO_DISSOLVE, 0.9F, master.cloak ? 0.85F : 1F);
         long now = master.getLevel().getGameTime();
         List<GlassBaseBlockEntity> blocks = new ArrayList<>();
         double furthest = 0D;

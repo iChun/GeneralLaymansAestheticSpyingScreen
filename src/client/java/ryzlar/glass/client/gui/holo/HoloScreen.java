@@ -39,6 +39,7 @@ public abstract class HoloScreen extends Screen
         if(openedAt < 0F)
         {
             openedAt = Holo.seconds();
+            minecraft.getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(ryzlar.glass.GlassSounds.UI_OPEN, 1F, 0.8F));
             GlassNetClient.clearResult();
         }
         seenVersion = GlassNetClient.version();
