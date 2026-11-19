@@ -5,11 +5,13 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "CameraMixin",
+    "ClientLevelMixin",
     "CloudRendererMixin",
     "GameRendererAccessor",
     "GameRendererMixin",
     "LevelRendererAccessor",
     "LevelRendererMixin",
+    "LevelWeatherMixin",
     "LivingEntityRendererMixin",
     "MinecraftMixin",
     "SectionOcclusionGraphAccessor",

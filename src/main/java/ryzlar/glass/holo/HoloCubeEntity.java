@@ -81,7 +81,11 @@ public class HoloCubeEntity extends Entity
     @Nullable
     public RoomScan.Room clientRoom;
     private float clientScanSpeed = SCAN_SPEED;
-
+    /** Client: the scan this cube held when last seen (to notice a scan it has just finished). */
+    @Nullable
+    private String clientSeenScan;
+    /** Client: told when a cube this client watched scanning has its scan (to take its panorama, see the client's Panoramas). */
+    public static java.util.function.Consumer<HoloCubeEntity> onClientScanDone = cube -> {};
 
     public HoloCubeEntity(EntityType<? extends HoloCubeEntity> type, Level level)
     {
@@ -204,6 +208,17 @@ public class HoloCubeEntity extends Entity
                 clientOffRadius = Math.min(clientReach + 2F, (now - clientOnStart) * WAVE_SPEED);
                 clientOffStart = now;
             }
+        }
+        else if(accessor == ITEM)
+        {
+            CubeScan scan = scan();
+            String id = scan == null ? null : scan.id();
+            if(id != null && !id.equals(clientSeenScan) && clientScanStart > Long.MIN_VALUE / 4 && now - clientScanStart < 20L * 30L)
+            {
+                clientSeenScan = id;
+                onClientScanDone.accept(this);
+            }
+            clientSeenScan = id;
         }
         else if(accessor == SCANNING)
         {
@@ -336,8 +351,11 @@ public class HoloCubeEntity extends Entity
         HoloProjectionData.Projection projection = HoloProjectionData.store(serverLevel, corner, maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1, room.blocks(), name);
         BlockPos origin = blockPosition().subtract(corner);
         ItemStack item = entityData.get(ITEM).copy();
+        //The sky over the room too (in a dimension that has one): the simulation shows it overhead.
+        boolean sky = serverLevel.dimensionType().hasSkyLight() && !serverLevel.dimensionType().hasFixedTime();
         item.set(GlassRegistry.CUBE_SCAN, new CubeScan(projection.id(), projection.name(), projection.sizeX(), projection.sizeY(), projection.sizeZ(),
-                origin.getX(), origin.getY(), origin.getZ(), facingOf(getYRot())));
+                origin.getX(), origin.getY(), origin.getZ(), facingOf(getYRot()),
+                sky ? serverLevel.getDayTime() : CubeScan.NO_SKY, sky ? serverLevel.getRainLevel(1F) : 0F, sky ? serverLevel.getThunderLevel(1F) : 0F));
         entityData.set(ITEM, item);
         //Projected where it was scanned, the room lies right over itself.
         entityData.set(TURN, 0);

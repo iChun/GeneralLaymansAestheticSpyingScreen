@@ -13,6 +13,7 @@ import ryzlar.glass.Glass;
 import ryzlar.glass.GlassRegistry;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
 import ryzlar.glass.holo.HoloCubeEntity;
+import ryzlar.glass.holo.PanoramaStore;
 
 import java.util.List;
 
@@ -57,6 +58,7 @@ public class GlassServerGameTest
         helper.succeedWhen(() -> {
             helper.assertTrue(cube.scan() != null, Component.literal("the cube has no scan yet"));
             helper.assertTrue(cube.scan().sizeX() == 5 && cube.scan().sizeZ() == 5, Component.literal("the scan is not the room: " + cube.scan()));
+            helper.assertTrue(!PanoramaStore.has(helper.getLevel().getServer(), cube.scan().id()), Component.literal("no client, so no panorama"));
         });
     }
 

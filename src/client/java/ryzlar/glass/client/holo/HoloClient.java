@@ -56,6 +56,8 @@ public final class HoloClient
 
     public static void init()
     {
+        SimulatedSky.init();
+        Panoramas.init();
         ClientPlayNetworking.registerGlobalReceiver(HoloNetworking.ProjectionBlocks.TYPE, (payload, context) -> {
             BlockState[] palette = new BlockState[payload.palette().size()];
             for(int i = 0; i < palette.length; i++)
@@ -85,6 +87,14 @@ public final class HoloClient
                 ryzlar.glass.holo.CubeScan scan = stack.get(GlassRegistry.CUBE_SCAN);
                 lines.add(scan == null ? Component.translatable("glass.tooltip.cube.empty").withStyle(ChatFormatting.GRAY)
                         : Component.translatable("glass.tooltip.cube.scan", scan.sizeX(), scan.sizeY(), scan.sizeZ()).withStyle(ChatFormatting.AQUA));
+                if(scan != null && scan.hasSky())
+                {
+                    //Day time 0 is 06:00.
+                    long minutes = Math.floorMod(scan.skyTime() + 6000L, 24000L) * 60L / 1000L;
+                    String weather = scan.thunder() > 0.5F ? "glass.tooltip.cube.sky.thunder" : scan.rain() > 0.2F ? "glass.tooltip.cube.sky.rain" : "glass.tooltip.cube.sky.clear";
+                    lines.add(Component.translatable("glass.tooltip.cube.sky", String.format(java.util.Locale.ROOT, "%02d:%02d", minutes / 60, minutes % 60),
+                            Component.translatable(weather)).withStyle(ChatFormatting.DARK_AQUA));
+                }
             }
         });
 
@@ -100,6 +110,8 @@ public final class HoloClient
 
     public static void reset()
     {
+        SimulatedSky.reset();
+        Panoramas.reset();
         projections.clear();
         requested.clear();
         previewBox = null;

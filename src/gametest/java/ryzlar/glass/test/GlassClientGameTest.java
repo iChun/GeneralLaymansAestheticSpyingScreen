@@ -657,6 +657,9 @@ public class GlassClientGameTest implements FabricClientGameTest
             context.waitTicks(5);
             net.minecraft.world.phys.AABB room = new net.minecraft.world.phys.AABB(100, -62, -11, 107, -55, -3);
             check(server.computeOnServer(s -> !s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).isEmpty()), "the empty cube is set down in the room");
+            //Scanned at midnight in the rain, the sky goes into the scan too (projected at noon, below, it is night inside).
+            server.runCommand("time set midnight");
+            server.runCommand("weather rain");
             server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).forEach(d -> d.scanFor(player(s))));
             int scanWaited = 0;
             for(int tick : new int[] { 8, 20, 35 })
@@ -672,6 +675,20 @@ public class GlassClientGameTest implements FabricClientGameTest
                 scanned = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream().anyMatch(d -> d.scan() != null));
             }
             check(scanned, "the cube scans the room around it");
+            float scanRain = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream()
+                    .map(HoloCubeEntity::scan).filter(java.util.Objects::nonNull).findFirst().map(ryzlar.glass.holo.CubeScan::rain).orElse(0F));
+            check(server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream()
+                    .map(HoloCubeEntity::scan).anyMatch(scan -> scan != null && scan.skyTime() == 18000L)) && scanRain > 0F, "the scan keeps the sky: midnight, raining");
+            boolean panorama = false;
+            for(int i = 0; i < 60 && !panorama; i++)
+            {
+                context.waitTicks(5);
+                panorama = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream()
+                        .anyMatch(d -> d.scan() != null && ryzlar.glass.holo.PanoramaStore.has(s, d.scan().id())));
+            }
+            check(panorama, "the cube takes a 360 degree panorama and keeps it with the scan");
+            server.runCommand("time set noon");
+            server.runCommand("weather clear");
             context.waitTicks(4);
             context.takeScreenshot("cube_scan_done");
             //Pick it up (with its scan) and take it in hand again.
@@ -713,6 +730,16 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("tp @p 126.5 -60 4.5 135 10");
             context.waitTicks(20);
             context.takeScreenshot("cube_room_inside");
+            //Inside, it is lit and rains as when it was scanned (midnight, rain), while the real world has a clear noon.
+            check(context.computeOnClient(mc -> mc.level.getSkyDarken(1F) < 0.3F && Math.abs(mc.level.getRainLevel(1F) - scanRain) < 0.05F),
+                    "inside the simulation the light and weather are the scanned ones");
+            //And the dome shows the scanned surroundings (through the window, and where the edge falls apart).
+            for(int yaw : new int[] { 0, 90, 180, 270 })
+            {
+                server.runCommand("tp @p 126.5 -60 4.5 " + yaw + " -5");
+                context.waitTicks(4);
+                context.takeScreenshot("cube_dome_" + yaw);
+            }
             //From outside, a barrier round it shows a simulation is running there.
             server.runCommand("tp @p 133.5 -59 12.5 135 15");
             context.waitTicks(10);
@@ -720,6 +747,8 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("tp @p 126.5 -60 20.5 180 5");
             context.waitTicks(10);
             context.takeScreenshot("cube_barrier_far");
+            check(context.computeOnClient(mc -> mc.level.getSkyDarken(1F) > 0.9F && mc.level.getRainLevel(1F) < 0.05F),
+                    "outside the simulation the light and weather are the real ones");
             server.runCommand("tp @p 126.5 -60 10.5 180 10");
             context.waitTicks(10);
             //Switch it off: the room shrinks back into the cube.

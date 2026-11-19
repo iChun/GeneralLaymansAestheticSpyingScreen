@@ -15,10 +15,15 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class RoomScan
 {
-    /** The box a room is looked for in, around the cube's block. */
+    /**
+     * The box a room is looked for in, around the cube's block. It reaches high, so outside the tree tops, roofs and
+     * overhangs above come along and the simulation is whole overhead too.
+     */
     public static final int HALF_WIDTH = 16;
     public static final int BELOW = 4;
-    public static final int ABOVE = 12;
+    public static final int ABOVE = 48;
+    /** The most blocks a room's box holds. */
+    public static final int MAX_VOLUME = (HALF_WIDTH * 2) * (HALF_WIDTH * 2) * (BELOW + ABOVE + 1);
 
     /** {@code surfaces}: solid blocks touching the open space; {@code open}: the space; {@code blocks}: what is scanned. */
     public record Room(BlockPos centre, BlockPos min, BlockPos max, LongSet surfaces, LongSet open, LongSet blocks)

@@ -111,8 +111,13 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         state.scan = entity.scan();
         state.entity = entity;
         state.radius = entity.waveRadius(partialTick);
-        //Lit like a block where the cube lies (day, night, torches).
-        state.brightness = 0.25F + 0.75F * entity.level().getMaxLocalRawBrightness(entity.anchor()) / 15F;
+        //Lit like a block where the cube lies (day, night, torches); daylight as the client sees it, so standing in a
+        //simulation scanned at night it is night-dark (see SimulatedSky).
+        net.minecraft.world.level.Level level = entity.level();
+        int sky = level.getBrightness(net.minecraft.world.level.LightLayer.SKY, entity.anchor());
+        int block = level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, entity.anchor());
+        float daylight = level instanceof ClientLevel client ? client.getSkyDarken(partialTick) : 1F;
+        state.brightness = 0.25F + 0.75F * Math.max(sky * daylight, block) / 15F;
         long now = entity.level().getGameTime();
         float time = now + partialTick;
         state.time = time;
@@ -205,13 +210,70 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         {
             state.entity.clientReach = hologram.reach;
         }
+        //The scanned sky comes and goes with the wave, like the room.
+        SimulatedSky.offer(state.entityId, state.anchor, hologram.boxMin, hologram.boxMax, state.radius / (hologram.reach + 2F), state.scan, (long)state.time);
         poseStack.pushPose();
         poseStack.translate(state.anchor.getX() - state.x, state.anchor.getY() - state.y, state.anchor.getZ() - state.z);
         hologram.replay(buffers.getBuffer(GlassRenderTypes.hologram(HoloProjectorBlockEntity.Look.SOLID.ordinal())), poseStack.last(), state.radius, state.brightness);
         drawShards(buffers.getBuffer(GlassRenderTypes.hologram(HoloProjectorBlockEntity.Look.BLUE.ordinal())), poseStack.last(), hologram,
                    state.time, state.radius);
+        drawDome(state, hologram, poseStack.last(), buffers);
         drawBarrier(state, hologram, poseStack.last(), buffers);
         poseStack.popPose();
+    }
+
+    /** How far round the room the dome lies, and over how many blocks inside the room it fades in (blocks). */
+    private static final float DOME_MARGIN = 0.6F;
+    private static final float DOME_FADE = 1.5F;
+
+    /**
+     * Standing inside the simulation, a dome round the room shows the scan's 360 degree panorama (see {@link Panoramas})
+     * in place of the real world: the sky and the land around where the room was scanned, as they were, standing still.
+     * It fades in as you walk in, and with the nano wave. From outside the room it is not there: the room stands in the
+     * real world, inside its barrier.
+     */
+    private static void drawDome(State state, HologramRenderer.Hologram hologram, PoseStack.Pose pose, MultiBufferSource buffers)
+    {
+        if(state.scan == null)
+        {
+            return;
+        }
+        Vec3 eye = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition().subtract(state.anchor.getX(), state.anchor.getY(), state.anchor.getZ());
+        org.joml.Vector3f min = hologram.boxMin, max = hologram.boxMax;
+        float inside = (float)Math.min(Math.min(eye.x - min.x, max.x - eye.x), Math.min(Math.min(eye.z - min.z, max.z - eye.z), Math.min(eye.y - min.y, max.y - eye.y)));
+        if(inside <= 0F)
+        {
+            return;
+        }
+        float fade = Math.clamp(inside / DOME_FADE, 0F, 1F) * Math.clamp(state.radius / (hologram.reach + 2F), 0F, 1F);
+        if(fade <= 0.01F)
+        {
+            return;
+        }
+        net.minecraft.resources.ResourceLocation panorama = Panoramas.texture(state.scan.id());
+        if(panorama == null)
+        {
+            return;
+        }
+        float x0 = min.x - DOME_MARGIN, y0 = min.y - DOME_MARGIN, z0 = min.z - DOME_MARGIN;
+        float x1 = max.x + DOME_MARGIN, y1 = max.y + DOME_MARGIN, z1 = max.z + DOME_MARGIN;
+        float[][][] faces = {
+                { { x0, y0, z0 }, { x1, y0, z0 }, { x1, y1, z0 }, { x0, y1, z0 } },
+                { { x0, y0, z1 }, { x0, y1, z1 }, { x1, y1, z1 }, { x1, y0, z1 } },
+                { { x0, y0, z0 }, { x0, y1, z0 }, { x0, y1, z1 }, { x0, y0, z1 } },
+                { { x1, y0, z0 }, { x1, y0, z1 }, { x1, y1, z1 }, { x1, y1, z0 } },
+                { { x0, y1, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { x0, y1, z1 } },
+                { { x0, y0, z0 }, { x0, y0, z1 }, { x1, y0, z1 }, { x1, y0, z0 } },
+        };
+        int alpha = Math.clamp(Math.round(fade * 255F), 0, 255);
+        com.mojang.blaze3d.vertex.VertexConsumer consumer = buffers.getBuffer(GlassRenderTypes.dome(panorama));
+        for(float[][] face : faces)
+        {
+            for(float[] c : face)
+            {
+                consumer.addVertex(pose, c[0], c[1], c[2]).setColor(255, 255, 255, alpha);
+            }
+        }
     }
 
     /** How far round the room the barrier stands (blocks). */
@@ -273,6 +335,10 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
     /** The scan running over the real room (see {@link ScanEffect}), and laser lines from the cube to its front. */
     private void drawScan(State state, PoseStack poseStack, MultiBufferSource buffers, float cubeHeight)
     {
+        if(Panoramas.capturing())
+        {
+            return; //the panorama is of the room, not of the scan
+        }
         if(state.room == null || state.scanFade <= 0F)
         {
             if(!state.scanning)
