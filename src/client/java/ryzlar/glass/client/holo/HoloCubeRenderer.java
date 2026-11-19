@@ -210,61 +210,28 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         hologram.replay(buffers.getBuffer(GlassRenderTypes.hologram(HoloProjectorBlockEntity.Look.SOLID.ordinal())), poseStack.last(), state.radius, state.brightness);
         drawShards(buffers.getBuffer(GlassRenderTypes.hologram(HoloProjectorBlockEntity.Look.BLUE.ordinal())), poseStack.last(), hologram,
                    state.time, state.radius);
-        drawDome(state, hologram, poseStack.last(), buffers);
+        drawBarrier(state, hologram, poseStack.last(), buffers);
         poseStack.popPose();
     }
 
-    /** How far round the room the dome lies, and over how many blocks inside the room it fades in (blocks). */
-    private static final float DOME_MARGIN = 0.6F;
-    private static final float DOME_FADE = 1.5F;
+    /** How far round the room the barrier stands (blocks). */
+    private static final float BARRIER_MARGIN = 0.15F;
 
     /**
-     * Standing inside the simulation, a dome round the room shows the scan's panorama (see {@link Panoramas}) in place of
-     * the real world: the sky and the land around where the room was scanned. It fades in as you walk in, and with the
-     * nano wave. From outside the room it is not there, and the room stands in the real world.
+     * The simulation's barrier: a glowing box round the room (its walls and roof, see {@link ScreenBack}), so it is plain
+     * from outside that a simulation is running there, and from inside where it ends. Walking through it ripples it. It
+     * fades in and out with the nano wave.
      */
-    private static void drawDome(State state, HologramRenderer.Hologram hologram, PoseStack.Pose pose, MultiBufferSource buffers)
+    private static void drawBarrier(State state, HologramRenderer.Hologram hologram, PoseStack.Pose pose, MultiBufferSource buffers)
     {
-        if(state.scan == null)
-        {
-            return;
-        }
-        Vec3 eye = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition().subtract(state.anchor.getX(), state.anchor.getY(), state.anchor.getZ());
-        org.joml.Vector3f min = hologram.boxMin, max = hologram.boxMax;
-        float inside = (float)Math.min(Math.min(eye.x - min.x, max.x - eye.x), Math.min(Math.min(eye.z - min.z, max.z - eye.z), Math.min(eye.y - min.y, max.y - eye.y)));
-        if(inside <= 0F)
-        {
-            return;
-        }
-        float fade = Math.clamp(inside / DOME_FADE, 0F, 1F) * Math.clamp(state.radius / (hologram.reach + 2F), 0F, 1F);
+        float fade = Math.clamp(state.radius / (hologram.reach + 2F), 0F, 1F);
         if(fade <= 0.01F)
         {
             return;
         }
-        net.minecraft.resources.ResourceLocation panorama = Panoramas.texture(state.scan.id());
-        if(panorama == null)
-        {
-            return;
-        }
-        float x0 = min.x - DOME_MARGIN, y0 = min.y - DOME_MARGIN, z0 = min.z - DOME_MARGIN;
-        float x1 = max.x + DOME_MARGIN, y1 = max.y + DOME_MARGIN, z1 = max.z + DOME_MARGIN;
-        float[][][] faces = {
-                { { x0, y0, z0 }, { x1, y0, z0 }, { x1, y1, z0 }, { x0, y1, z0 } },
-                { { x0, y0, z1 }, { x0, y1, z1 }, { x1, y1, z1 }, { x1, y0, z1 } },
-                { { x0, y0, z0 }, { x0, y1, z0 }, { x0, y1, z1 }, { x0, y0, z1 } },
-                { { x1, y0, z0 }, { x1, y0, z1 }, { x1, y1, z1 }, { x1, y1, z0 } },
-                { { x0, y1, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { x0, y1, z1 } },
-                { { x0, y0, z0 }, { x0, y0, z1 }, { x1, y0, z1 }, { x1, y0, z0 } },
-        };
-        int alpha = Math.clamp(Math.round(fade * 255F), 0, 255);
-        com.mojang.blaze3d.vertex.VertexConsumer consumer = buffers.getBuffer(GlassRenderTypes.dome(panorama));
-        for(float[][] face : faces)
-        {
-            for(float[] c : face)
-            {
-                consumer.addVertex(pose, c[0], c[1], c[2]).setColor(255, 255, 255, alpha);
-            }
-        }
+        org.joml.Vector3f min = new org.joml.Vector3f(hologram.boxMin).sub(BARRIER_MARGIN, 0F, BARRIER_MARGIN);
+        org.joml.Vector3f max = new org.joml.Vector3f(hologram.boxMax).add(BARRIER_MARGIN, BARRIER_MARGIN, BARRIER_MARGIN);
+        ryzlar.glass.client.render.ScreenBack.drawBarrier("cube@" + state.entityId, min, max, state.anchor, pose, buffers, state.time - (long)state.time, fade);
     }
 
     /** The box a scan can reach (the room is found inside it), pulsing faintly, with its floor marked. */
@@ -306,10 +273,6 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
     /** The scan running over the real room (see {@link ScanEffect}), and laser lines from the cube to its front. */
     private void drawScan(State state, PoseStack poseStack, MultiBufferSource buffers, float cubeHeight)
     {
-        if(Panoramas.capturing())
-        {
-            return; //the panorama is of the room, not of the scan
-        }
         if(state.room == null || state.scanFade <= 0F)
         {
             if(!state.scanning)

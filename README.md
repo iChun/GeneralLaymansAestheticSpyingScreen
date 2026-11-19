@@ -15,9 +15,9 @@ This fork adds a few things on top:
 - **Scene Selector.** Switches a screen between channels, with a wipe across the glass.
 - **Hologram kit.** The **Holo Scanner** scans an area into a **Projection Crystal**; a **Holo Projector** with
   **Holo Emitters** projects it as a hologram (classic, blue or solid).
-- **Holo Cube.** Set it down and right-click it: it scans the room around it with a wave of light, and takes a
-  360 degree panorama. Set it down anywhere and right-click it again: the room is projected 1:1 as a solid
-  simulation you can walk into, with a blue, dissolving edge, and the panorama as a dome around it.
+- **Holo Cube.** Set it down and right-click it: it scans the room around it with a wave of light. Set it down
+  anywhere and right-click it again: the room is projected 1:1 as a solid simulation you can walk into, with a
+  blue, dissolving edge and a glowing barrier round it, so everyone can see a simulation is running.
 
 ## Original author and credit
 
@@ -72,8 +72,6 @@ What this means for this fork:
   Projector, Holo Emitter, Projection Crystal) and the Holo Cube, with Blockbench models (sources in `blockbench/`).
 - Wireless extensions have their own screen: what they are connected to, disconnect, locate, link.
 - The back of a floating screen and the inside of a cloak field show glowing edges and a nano grid.
-- Holo Cube panoramas are kept in the world folder (`glass_panoramas/`), and cached by clients in
-  `glass_panoramas/` in the game folder.
 
 ## Requirements
 

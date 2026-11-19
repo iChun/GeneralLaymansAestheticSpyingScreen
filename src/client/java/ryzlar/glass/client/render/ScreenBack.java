@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
@@ -43,6 +44,12 @@ public final class ScreenBack
 
     private static final Map<String, Ripple> RIPPLES = new HashMap<>();
     private static final Map<String, Vec3> LAST_BODY = new HashMap<>();
+    /** Simulation barriers drawn lately (world boxes), so walking through them ripples them too. */
+    private record Barrier(AABB box, long seenAt) {}
+    private static final Map<String, Barrier> BARRIERS = new HashMap<>();
+    /** How the vertices that follow look: a barrier (seen from far, always faintly there) and how far faded in. */
+    private static boolean barrierStyle;
+    private static float styleFade = 1F;
 
     private ScreenBack() {}
 
@@ -102,6 +109,24 @@ public final class ScreenBack
             else if(side < 0D && -side < TOUCH)
             {
                 ripple(key, plane.project(body), now, false);
+            }
+        }
+        BARRIERS.values().removeIf(b -> now - b.seenAt() > 20L);
+        for(Map.Entry<String, Barrier> e : BARRIERS.entrySet())
+        {
+            String key = e.getKey();
+            AABB box = e.getValue().box();
+            active.add(key);
+            Vec3 last = LAST_BODY.put(key, body);
+            Vec3 onWall = nearestOnBoxSurface(box, body);
+            boolean in = box.contains(body);
+            if(last != null && in != box.contains(last))
+            {
+                ripple(key, onWall, now, true);
+            }
+            else if(onWall.distanceTo(body) < TOUCH && Math.abs(body.y - Mth.clamp(body.y, box.minY, box.maxY)) < 1.0E-6D)
+            {
+                ripple(key, onWall, now, false);
             }
         }
         LAST_BODY.keySet().retainAll(active);
@@ -317,6 +342,39 @@ public final class ScreenBack
         drawOutline(consumer, pose, List.of(corners), n, along, up, hit, ring, surfaceStart);
     }
 
+    // ---- A simulation's barrier ----
+
+    /**
+     * Draws a holo cube simulation's barrier: walls and a roof round the box from {@code min} to {@code max} (from the
+     * anchor block's corner, where the pose is), always faintly there, glowing at the edges.
+     */
+    public static void drawBarrier(String key, Vector3f min, Vector3f max, BlockPos anchor, PoseStack.Pose pose, MultiBufferSource buffers,
+                                   float partialTick, float fade)
+    {
+        Minecraft mc = Minecraft.getInstance();
+        if(mc.level != null)
+        {
+            BARRIERS.put(key, new Barrier(new AABB(min.x, min.y, min.z, max.x, max.y, max.z).move(anchor.getX(), anchor.getY(), anchor.getZ()), mc.level.getGameTime()));
+        }
+        Vec3 centre = Vec3.atLowerCornerOf(anchor);
+        float w = max.x - min.x, d = max.z - min.z, h = max.y - min.y;
+        barrierStyle = true;
+        styleFade = fade;
+        try
+        {
+            drawFieldSide(key, new Vector3f(min.x, min.y, min.z), new Vector3f(1F, 0F, 0F), new Vector3f(0F, 1F, 0F), w, h, 0F, centre, pose, buffers, partialTick);
+            drawFieldSide(key, new Vector3f(min.x, min.y, max.z), new Vector3f(1F, 0F, 0F), new Vector3f(0F, 1F, 0F), w, h, d, centre, pose, buffers, partialTick);
+            drawFieldSide(key, new Vector3f(min.x, min.y, min.z), new Vector3f(0F, 0F, 1F), new Vector3f(0F, 1F, 0F), d, h, 0F, centre, pose, buffers, partialTick);
+            drawFieldSide(key, new Vector3f(max.x, min.y, min.z), new Vector3f(0F, 0F, 1F), new Vector3f(0F, 1F, 0F), d, h, w, centre, pose, buffers, partialTick);
+            drawFieldSide(key, new Vector3f(min.x, max.y, min.z), new Vector3f(1F, 0F, 0F), new Vector3f(0F, 0F, 1F), w, d, 0F, centre, pose, buffers, partialTick);
+        }
+        finally
+        {
+            barrierStyle = false;
+            styleFade = 1F;
+        }
+    }
+
     // ---- Drawing ----
 
     private static void drawOutline(VertexConsumer consumer, PoseStack.Pose pose, List<Vector3f> outline, Vector3f n, Vector3f u, Vector3f v,
@@ -380,7 +438,7 @@ public final class ScreenBack
     private static void vertex(VertexConsumer consumer, PoseStack.Pose pose, Vector3f p, float su, float sv, boolean edge, int[] hit, int[] ring)
     {
         consumer.addVertex(pose, p.x, p.y, p.z)
-                .setColor(edge ? 255 : 0, 0, 0, 255)
+                .setColor(edge ? 255 : 0, 0, barrierStyle ? 255 : 0, Mth.clamp(Math.round(styleFade * 255F), 0, 255))
                 .setUv(su, sv)
                 .setUv1(hit[0], hit[1])
                 .setUv2(ring[0], ring[1])

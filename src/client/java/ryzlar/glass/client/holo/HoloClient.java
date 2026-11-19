@@ -56,7 +56,6 @@ public final class HoloClient
 
     public static void init()
     {
-        Panoramas.init();
         ClientPlayNetworking.registerGlobalReceiver(HoloNetworking.ProjectionBlocks.TYPE, (payload, context) -> {
             BlockState[] palette = new BlockState[payload.palette().size()];
             for(int i = 0; i < palette.length; i++)
@@ -101,7 +100,6 @@ public final class HoloClient
 
     public static void reset()
     {
-        Panoramas.reset();
         projections.clear();
         requested.clear();
         previewBox = null;

@@ -81,11 +81,7 @@ public class HoloCubeEntity extends Entity
     @Nullable
     public RoomScan.Room clientRoom;
     private float clientScanSpeed = SCAN_SPEED;
-    /** Client: the scan this cube held when last seen (to notice a scan it has just finished). */
-    @Nullable
-    private String clientSeenScan;
-    /** Client: told when a cube this client watched scanning has its scan (to take its panorama, see the client's Panoramas). */
-    public static java.util.function.Consumer<HoloCubeEntity> onClientScanDone = cube -> {};
+
 
     public HoloCubeEntity(EntityType<? extends HoloCubeEntity> type, Level level)
     {
@@ -208,17 +204,6 @@ public class HoloCubeEntity extends Entity
                 clientOffRadius = Math.min(clientReach + 2F, (now - clientOnStart) * WAVE_SPEED);
                 clientOffStart = now;
             }
-        }
-        else if(accessor == ITEM)
-        {
-            CubeScan scan = scan();
-            String id = scan == null ? null : scan.id();
-            if(id != null && !id.equals(clientSeenScan) && clientScanStart > Long.MIN_VALUE / 4 && now - clientScanStart < 20L * 30L)
-            {
-                clientSeenScan = id;
-                onClientScanDone.accept(this);
-            }
-            clientSeenScan = id;
         }
         else if(accessor == SCANNING)
         {

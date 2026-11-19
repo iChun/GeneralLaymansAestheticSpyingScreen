@@ -4,6 +4,8 @@
 #moj_import <minecraft:globals.glsl>
 
 in float kind;
+in float barrier;
+in float fade;
 in vec2 surface;
 in vec3 viewPos;
 in vec2 rippleCentre;
@@ -34,7 +36,7 @@ void main() {
     if (kind > 0.5) {
         // Edges and corner marks: always there, so you can see where the screen is from behind, breathing a little.
         float pulse = 0.78 + 0.22 * sin(seconds * 2.2 + (surface.x + surface.y) * 0.7);
-        fragColor = vec4(CYAN * (1.0 + ring), clamp(0.62 * pulse + ring * 0.35, 0.0, 1.0)) * ColorModulator;
+        fragColor = vec4(CYAN * (1.0 + ring), clamp(0.62 * pulse + ring * 0.35, 0.0, 1.0) * fade) * ColorModulator;
         return;
     }
 
@@ -53,6 +55,18 @@ void main() {
     float alpha = (line * 0.42 + twinkle * 0.30 + sweep * 0.10) * near;
     // The ripple lights the whole cells it passes, at any distance.
     alpha += ring * (0.18 + line * 0.5 + twinkle * 0.3);
+    if (barrier > 0.5) {
+        // A simulation's barrier is there from far too: a faint blue sheen, a coarse grid, and bands of light rising.
+        vec2 coarsePos = surface * 1.0;
+        vec2 coarseIn = fract(coarsePos);
+        vec2 coarseWidth = fwidth(coarsePos) * 1.4;
+        vec2 coarseLines = 1.0 - smoothstep(vec2(0.0), coarseWidth, min(coarseIn, 1.0 - coarseIn));
+        float coarse = max(coarseLines.x, coarseLines.y);
+        float rise = fract(surface.y / 5.0 - seconds * 0.12);
+        float band = smoothstep(0.0, 0.05, rise) * (1.0 - smoothstep(0.05, 0.22, rise));
+        alpha += 0.045 + coarse * 0.16 + band * 0.22 + twinkle * 0.08;
+    }
+    alpha *= fade;
     if (alpha < 0.004) {
         discard;
     }

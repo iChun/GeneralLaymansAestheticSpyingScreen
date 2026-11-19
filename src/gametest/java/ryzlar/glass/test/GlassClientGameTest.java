@@ -674,14 +674,6 @@ public class GlassClientGameTest implements FabricClientGameTest
             check(scanned, "the cube scans the room around it");
             context.waitTicks(4);
             context.takeScreenshot("cube_scan_done");
-            boolean panorama = false;
-            for(int i = 0; i < 40 && !panorama; i++)
-            {
-                context.waitTicks(5);
-                panorama = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream()
-                        .anyMatch(d -> d.scan() != null && ryzlar.glass.holo.PanoramaStore.has(s, d.scan().id())));
-            }
-            check(panorama, "the cube takes a 360 degree panorama and keeps it with the scan");
             //Pick it up (with its scan) and take it in hand again.
             server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).forEach(d -> d.startPickUp(player(s))));
             context.waitTicks(3);
@@ -721,13 +713,13 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("tp @p 126.5 -60 4.5 135 10");
             context.waitTicks(20);
             context.takeScreenshot("cube_room_inside");
-            //Inside the simulation the dome shows the scanned surroundings (through the window, and where the edge falls apart).
-            for(int yaw : new int[] { 0, 90, 180, 270 })
-            {
-                server.runCommand("tp @p 126.5 -60 4.5 " + yaw + " -5");
-                context.waitTicks(4);
-                context.takeScreenshot("cube_dome_" + yaw);
-            }
+            //From outside, a barrier round it shows a simulation is running there.
+            server.runCommand("tp @p 133.5 -59 12.5 135 15");
+            context.waitTicks(10);
+            context.takeScreenshot("cube_barrier_outside");
+            server.runCommand("tp @p 126.5 -60 20.5 180 5");
+            context.waitTicks(10);
+            context.takeScreenshot("cube_barrier_far");
             server.runCommand("tp @p 126.5 -60 10.5 180 10");
             context.waitTicks(10);
             //Switch it off: the room shrinks back into the cube.
