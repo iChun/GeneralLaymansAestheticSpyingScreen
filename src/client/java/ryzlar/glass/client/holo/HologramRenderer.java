@@ -174,7 +174,7 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
     {
         Layout layout = layout(be, projection);
         Placement placement = new Placement(projection.sizeX() / 2F, 0F, projection.sizeZ() / 2F, be.rotation, layout.scale(), layout.anchor());
-        return buildMesh(level, projection, placement, sources(level, be), new Vec3(0.5D, 1D, 0.5D), be.getBlockPos());
+        return buildMesh(level, projection, placement, sources(level, be), new Vec3(0.5D, 1D, 0.5D), be.getBlockPos(), false);
     }
 
     /**
@@ -185,9 +185,11 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
 
     /**
      * Builds a hologram. {@code sources}: keep only the sides they can see (null keeps every side). {@code waveOrigin}:
-     * where the nano wave starts. Everything is in the same local coordinates as the anchor.
+     * where the nano wave starts. Everything is in the same local coordinates as the anchor. {@code simulationEdge}: the
+     * room's outer edge falls apart into blue nano pixels (each corner carries how far it is from the edge).
      */
-    static Hologram buildMesh(ClientLevel level, HoloClient.ClientProjection projection, Placement placement, @Nullable List<Vec3> sources, Vec3 waveOrigin, BlockPos tintPos)
+    static Hologram buildMesh(ClientLevel level, HoloClient.ClientProjection projection, Placement placement, @Nullable List<Vec3> sources, Vec3 waveOrigin, BlockPos tintPos,
+                              boolean simulationEdge)
     {
         ModelView view = new ModelView(level, projection, tintPos, 0xF000F0);
         Capture capture = new Capture();
@@ -200,6 +202,18 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
         double cos = Math.cos(turn), sin = Math.sin(turn);
         float scale = placement.scale();
         Vec3 anchor = placement.anchor();
+        //The projection's box, placed (turns are quarter turns, so it stays a box).
+        for(int corner = 0; corner < 2; corner++)
+        {
+            float mx = (corner == 0 ? 0F : projection.sizeX()) - placement.pivotX();
+            float my = (corner == 0 ? 0F : projection.sizeY()) - placement.pivotY();
+            float mz = (corner == 0 ? 0F : projection.sizeZ()) - placement.pivotZ();
+            float rx = (float)(mx * cos - mz * sin);
+            float rz = (float)(mx * sin + mz * cos);
+            Vector3f p = new Vector3f((float)(anchor.x + rx * scale), (float)(anchor.y + my * scale), (float)(anchor.z + rz * scale));
+            hologram.boxMin.min(p);
+            hologram.boxMax.max(p);
+        }
 
         for(int y = 0; y < projection.sizeY(); y++)
         {
@@ -246,7 +260,15 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
                         }
                         for(int c = 0; c < 4; c++)
                         {
-                            hologram.add(corners[c], capture.u(q + c), capture.v(q + c), capture.colour(q + c) | 0xFF000000, c);
+                            int alpha = 255;
+                            if(simulationEdge)
+                            {
+                                //How far in from the room's walls, as 0..254 over the edge band (255: no edge here).
+                                float cx = capture.x(q + c), cz = capture.z(q + c);
+                                float edge = Math.min(Math.min(cx, projection.sizeX() - cx), Math.min(cz, projection.sizeZ() - cz)) * scale;
+                                alpha = Math.clamp(Math.round(edge / EDGE_BAND * 254F), 0, 255);
+                            }
+                            hologram.add(corners[c], capture.u(q + c), capture.v(q + c), (capture.colour(q + c) & 0xFFFFFF) | alpha << 24, c);
                         }
                     }
                 }
@@ -269,9 +291,15 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
         return false;
     }
 
+    /** How far in from a simulation's walls its edge falls apart, in blocks (the same as EDGE_BAND in glass_holo.fsh). */
+    static final float EDGE_BAND = 1.75F;
+
     /** A built hologram: quads in the projector's coordinates, and how far the farthest corner is from the wave's origin. */
     static final class Hologram
     {
+        /** The projection's box, placed. */
+        final Vector3f boxMin = new Vector3f(Float.MAX_VALUE);
+        final Vector3f boxMax = new Vector3f(-Float.MAX_VALUE);
         private final FloatArrayList floats = new FloatArrayList(); //x, y, z, u, v
         private final IntArrayList ints = new IntArrayList(); //colour, corner
         /** Where the nano wave starts. */
@@ -304,7 +332,7 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
          */
         void replay(VertexConsumer consumer, PoseStack.Pose pose, float radius, float brightness)
         {
-            int encodedRadius = Math.clamp(Math.round(radius * 64F), 0, 32767);
+            int encodedRadius = encodeRadius(radius);
             int vertices = ints.size() / 2;
             for(int i = 0; i < vertices; i++)
             {
@@ -317,16 +345,26 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
                     int r = (int)(((colour >> 16) & 0xFF) * brightness);
                     int g = (int)(((colour >> 8) & 0xFF) * brightness);
                     int b = (int)((colour & 0xFF) * brightness);
-                    colour = 0xFF000000 | r << 16 | g << 8 | b;
+                    colour = (colour & 0xFF000000) | r << 16 | g << 8 | b;
                 }
-                int corner = ints.getInt(k + 1);
-                consumer.addVertex(pose, x, y, z)
-                        .setColor(colour)
-                        .setUv(floats.getFloat(f + 3), floats.getFloat(f + 4))
-                        .setUv1(toShort((x - originX) * 32F), toShort((z - originZ) * 32F))
-                        .setUv2(toShort((y - originY) * 32F), encodedRadius)
-                        .setNormal(pose, corner == 2 || corner == 3 ? 1F : -1F, corner == 1 || corner == 2 ? 1F : -1F, 0F);
+                vertex(consumer, pose, x, y, z, floats.getFloat(f + 3), floats.getFloat(f + 4), colour, ints.getInt(k + 1), encodedRadius);
             }
+        }
+
+        static int encodeRadius(float radius)
+        {
+            return Math.clamp(Math.round(radius * 64F), 0, 32767);
+        }
+
+        /** One hologram corner (see glass_holo.vsh); {@code corner} 0..3 goes round the face. */
+        void vertex(VertexConsumer consumer, PoseStack.Pose pose, float x, float y, float z, float u, float v, int colour, int corner, int encodedRadius)
+        {
+            consumer.addVertex(pose, x, y, z)
+                    .setColor(colour)
+                    .setUv(u, v)
+                    .setUv1(toShort((x - originX) * 32F), toShort((z - originZ) * 32F))
+                    .setUv2(toShort((y - originY) * 32F), encodedRadius)
+                    .setNormal(pose, corner == 2 || corner == 3 ? 1F : -1F, corner == 1 || corner == 2 ? 1F : -1F, 0F);
         }
 
         private static int toShort(float value)

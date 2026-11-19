@@ -18,6 +18,9 @@ out vec4 fragColor;
 const float CELLS = 6.4;
 const float FRONT_WIDTH = 1.3;
 const float SPILL = 0.45;
+// A simulation's edge: how far in from its walls it falls apart into blue nano pixels, in blocks (vertex alpha carries
+// the distance, see HologramRenderer.EDGE_BAND; alpha 1 means no edge).
+const float EDGE_BAND = 1.75;
 
 float hash(float n) {
     return fract(sin(n) * 43758.5453);
@@ -42,6 +45,21 @@ void main() {
     }
     float front = 1.0 - smoothstep(0.0, FRONT_WIDTH, reveal);
 
+    // The edge of a simulation (so you know where it ends): the closer to its walls, the more nano pixels are gone, each
+    // flickering out and back in on its own beat; the ones about to go glow, and the rest turns blue.
+    float edgeDistance = vertexColor.a > 0.999 ? 1000.0 : vertexColor.a * (255.0 / 254.0) * EDGE_BAND;
+    float near = 1.0 - clamp(edgeDistance / EDGE_BAND, 0.0, 1.0);
+    float glow = 0.0;
+    if (near > 0.0) {
+        float own = hash3(cell + 17.0);
+        float beat = hash3(cell + floor(seconds * (0.5 + own * 1.5) + own * 7.0));
+        float keep = own - (near * near * 0.72 + (beat - 0.5) * 0.3 * near);
+        if (keep < 0.0) {
+            discard;
+        }
+        glow = 1.0 - smoothstep(0.0, 0.12, keep);
+    }
+
     vec4 tex = texture(Sampler0, texCoord0);
     if (tex.a < 0.1) {
         discard;
@@ -58,6 +76,16 @@ void main() {
     float luma = dot(colour, vec3(0.299, 0.587, 0.114));
     colour = mix(vec3(luma), colour, 1.0 + front * 1.6);
     colour *= 1.0 + front * 0.45 + spark * front * 0.35;
+
+    if (near > 0.0) {
+        // Blue towards the edge, with lines of light sweeping up it now and then.
+        float edgeLuma = dot(colour, vec3(0.299, 0.587, 0.114));
+        vec3 blue = vec3(0.16, 0.58, 1.0) * (0.35 + edgeLuma * 1.15);
+        float shell = smoothstep(0.0, 1.0, near);
+        float sweep = step(0.93, fract((floor(localPos.y * CELLS) / CELLS) * 0.35 - seconds * 0.45));
+        colour = mix(colour, blue, shell * 0.85);
+        colour += vec3(0.40, 0.85, 1.0) * (glow * 0.95 + sweep * 0.45) * near;
+    }
 
 #ifdef SOLID
     fragColor = vec4(clamp(colour, 0.0, 1.0), 1.0) * ColorModulator;

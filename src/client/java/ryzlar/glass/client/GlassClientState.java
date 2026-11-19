@@ -137,6 +137,16 @@ public final class GlassClientState implements GlassClientBridge
         punches.put(base.channel, new Punch(point, mc.level.getGameTime()));
     }
 
+    /** A ripple on a screen's front from this point (something went through it). */
+    public void addPunch(String key, Vec3 point)
+    {
+        Minecraft mc = Minecraft.getInstance();
+        if(mc.level != null)
+        {
+            punches.put(key, new Punch(point, mc.level.getGameTime()));
+        }
+    }
+
     @Nullable
     public Punch punchFor(String key)
     {
@@ -388,6 +398,10 @@ public final class GlassClientState implements GlassClientBridge
         //the turn-on wave had got to if it is switched off before it finished.
         float radius = (float)furthest + 0.75F + 0.6F;
         radius = Math.min(radius, master.onRadius(0F));
+        if(master.cloakFieldBox() != null)
+        {
+            radius = Math.max(radius, 42F * GlassBaseBlockEntity.WAVE_SPEED); //the field's walls take two seconds to sink back
+        }
         for(GlassBaseBlockEntity base : blocks)
         {
             base.offKey = key;

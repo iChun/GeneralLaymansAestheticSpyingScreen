@@ -200,6 +200,12 @@ public class TerminalPlacement
      */
     private void placeCloakPlane(Direction side)
     {
+        AABB field = master.cloakFieldBox();
+        if(field != null)
+        {
+            placeFieldPlane(side, field);
+            return;
+        }
         double outer = Double.NEGATIVE_INFINITY;
         double min = Double.POSITIVE_INFINITY;
         double max = Double.NEGATIVE_INFINITY;
@@ -231,6 +237,57 @@ public class TerminalPlacement
         hidden = hiddenBox(side, plane - CLIP_MARGIN, outer + 0.5D);
         CloakFill.Area area = side.getAxis().isHorizontal() ? areaOf(side, outer, (int)Math.round(depth)) : null;
         fill = area == null ? null : new CloakFill(area);
+    }
+
+    /**
+     * Cloak field: each side of the box hides the whole box. Its plane is the far side of the box, its ground the box's
+     * floor (for the roof, the whole footprint).
+     */
+    private void placeFieldPlane(Direction side, AABB box)
+    {
+        Vec3 n = Vec3.atLowerCornerOf(side.getUnitVec3i());
+        //The box's far side along the side's normal, pulled a hair towards the viewer (see the camera clip plane).
+        double inner = Math.min(n.dot(new Vec3(box.minX, box.minY, box.minZ)), n.dot(new Vec3(box.maxX, box.maxY, box.maxZ)));
+        double plane = inner + CLIP_MARGIN;
+        Vec3 centre = box.getCenter();
+        clipPoint = centre.add(n.scale(plane - centre.dot(n)));
+        clipNormal = new Vector3f(-side.getStepX(), -side.getStepY(), -side.getStepZ());
+        cullRender = true;
+        hidden = box;
+        if(side.getAxis().isHorizontal())
+        {
+            fill = new CloakFill(fieldArea(side, box));
+        }
+        else if(side == Direction.UP)
+        {
+            //The roof is only looked through from right above the field (from beside it, it shows a wall's view). Its
+            //plane is the floor, which cuts away everything around the field too, as far as a ray through the roof can
+            //run sideways before it comes down: draw the world back in all around.
+            fill = new CloakFill(fieldArea(Direction.SOUTH, box).allAround(Math.min(CloakFill.SPREAD, (int)Math.ceil(box.maxY - box.minY) + 4)));
+        }
+        else
+        {
+            fill = null;
+        }
+    }
+
+    /** The ground of a cloak field, seen through one side: the row under the box, back through all of it. */
+    private static CloakFill.Area fieldArea(Direction side, AABB box)
+    {
+        Direction across = side.getClockWise();
+        int minX = (int)Math.floor(box.minX), maxX = (int)Math.floor(box.maxX) - 1;
+        int minZ = (int)Math.floor(box.minZ), maxZ = (int)Math.floor(box.maxZ) - 1;
+        int y = (int)Math.floor(box.minY);
+        int a1 = minX * across.getStepX() + minZ * across.getStepZ();
+        int a2 = maxX * across.getStepX() + maxZ * across.getStepZ();
+        int minAcross = Math.min(a1, a2), maxAcross = Math.max(a1, a2);
+        boolean positive = side.getAxisDirection() == Direction.AxisDirection.POSITIVE;
+        int outerBlock = side.getAxis() == Direction.Axis.X ? (positive ? maxX : minX) : (positive ? maxZ : minZ);
+        int depth = side.getAxis() == Direction.Axis.X ? maxX - minX + 1 : maxZ - minZ + 1;
+        int middle = (minAcross + maxAcross) / 2 * (across.getStepX() + across.getStepZ());
+        int front = outerBlock + side.getStepX() + side.getStepZ();
+        BlockPos lightPos = new BlockPos(side.getAxis() == Direction.Axis.X ? front : middle, y, side.getAxis() == Direction.Axis.Z ? front : middle);
+        return CloakFill.Area.side(side, y - 1, minAcross, maxAcross, outerBlock, depth, box, lightPos);
     }
 
     /** The screen's bounding box, stretched along the side's axis from the clip plane to the outer face. */
@@ -295,7 +352,7 @@ public class TerminalPlacement
         int front = outerBlock + side.getStepX() + side.getStepZ();
         //Where the light is read: just outside the screen's bottom row (inside, the hidden blocks are dark).
         BlockPos lightPos = new BlockPos(side.getAxis() == Direction.Axis.X ? front : middle, minY, side.getAxis() == Direction.Axis.Z ? front : middle);
-        return new CloakFill.Area(side, minY - 1, minAcross, maxAcross, outerBlock, depth, hidden, lightPos);
+        return CloakFill.Area.side(side, minY - 1, minAcross, maxAcross, outerBlock, depth, hidden, lightPos);
     }
 
     /** Cloak side: its ground, rebuilt from the surroundings. Null for the top and bottom, and for camera screens. */

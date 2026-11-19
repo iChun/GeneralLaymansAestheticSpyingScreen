@@ -31,12 +31,15 @@ public class GlassClient implements ClientModInitializer
         BlockEntityRenderers.register(GlassRegistry.GLASS_TERMINAL_BE, GlassTerminalRenderer::new);
 
         ClientTickEvents.END_CLIENT_TICK.register(GlassClientState.INSTANCE::clientTick);
+        ClientTickEvents.END_CLIENT_TICK.register(ryzlar.glass.client.render.ScreenBack::tick);
+        ryzlar.glass.client.render.LinkHighlight.init();
         //No selection outline on blocks a cloak hides (or on the cloak's own glass), seen from outside.
         WorldRenderEvents.BEFORE_BLOCK_OUTLINE.register((context, hit) -> !(hit instanceof BlockHitResult block
                 && block.getType() == HitResult.Type.BLOCK
                 && GlassClientState.INSTANCE.isHiddenByCloak(block.getBlockPos(), context.camera().getPosition())));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
             GlassClientState.INSTANCE.clear();
+            ryzlar.glass.client.render.LinkHighlight.reset();
             GlassNetClient.reset();
             ryzlar.glass.client.holo.HoloClient.reset();
         }));

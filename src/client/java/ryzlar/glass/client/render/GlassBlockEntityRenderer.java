@@ -204,12 +204,27 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
         }
 
         PoseStack.Pose pose = poseStack.last();
+        if(wireless && cloak && te instanceof GlassProjectorBlockEntity master && master.cloakFieldBox() != null)
+        {
+            drawField(master, master.cloakFieldBox(), spy, key, placement, switchingOff, pose, buffers, partialTick);
+            return;
+        }
         if(wireless && te instanceof GlassProjectorBlockEntity master)
         {
+            //The image works from the front only; from behind you see the screen's back (ScreenBack).
+            List<Vector3f> points = wirelessPoints(master);
+            if(!points.isEmpty() && !inFrontOf(master, points.getFirst()))
+            {
+                if(!switchingOff)
+                {
+                    ScreenBack.drawWireless(key, master, points, pose, buffers, partialTick);
+                }
+                return;
+            }
             ScreenImage image = image(spy, key, placement, cloak, master.placingFace, switchingOff, transition);
             if(image != null)
             {
-                drawNanoWireless(master, pose, image.consumer(buffers, false), image.wave(radius), punchPoint, ring);
+                drawNanoWireless(master, points, pose, image.consumer(buffers, false), image.wave(radius), punchPoint, ring);
             }
             return;
         }
@@ -271,6 +286,139 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
             }
         }
         return all;
+    }
+
+    /** How long a cloak field's walls take to rise out of the ground (and sink back), in ticks. */
+    private static final float FIELD_RISE_TICKS = 40F;
+    private static final float FIELD_OUTSET = 0.01F;
+
+    /**
+     * A cloak field: four walls and a roof around the box between the corner extensions, each showing what lies behind
+     * the whole box from that side. Switching on, the walls rise out of the ground with the nano front along their top
+     * edge, and the roof closes once they are up; switching off, they sink back.
+     */
+    private static void drawField(GlassProjectorBlockEntity master, net.minecraft.world.phys.AABB box, SpyViewRenderer spy, String key,
+                                  @org.jetbrains.annotations.Nullable TerminalPlacement placement, boolean switchingOff, PoseStack.Pose pose,
+                                  MultiBufferSource buffers, float partialTick)
+    {
+        Level level = master.getLevel();
+        if(level == null)
+        {
+            return;
+        }
+        float height = (float)(box.maxY - box.minY);
+        //How far up the walls are (past the top, so the front runs off it).
+        float full = height + 2F;
+        float t = switchingOff ? (level.getGameTime() - master.offStart + partialTick) : (level.getGameTime() - master.onStart + partialTick);
+        float x = Math.clamp(t / FIELD_RISE_TICKS, 0F, 1F);
+        float eased = x * x * x * (x * (x * 6F - 15F) + 10F);
+        float rise = full * (switchingOff ? 1F - eased : eased);
+        if(rise <= 0F)
+        {
+            return;
+        }
+        Vec3 eye = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        BlockPos origin = master.getBlockPos();
+        //From the projector's centre (where this renderer draws from), a little outside the box so the walls are clearly in
+        //front of the corner extensions.
+        float x0 = (float)(box.minX - origin.getX() - 0.5D) - FIELD_OUTSET, x1 = (float)(box.maxX - origin.getX() - 0.5D) + FIELD_OUTSET;
+        float y0 = (float)(box.minY - origin.getY() - 0.5D) - 0.002F, y1 = (float)(box.maxY - origin.getY() - 0.5D) + FIELD_OUTSET;
+        float z0 = (float)(box.minZ - origin.getZ() - 0.5D) - FIELD_OUTSET, z1 = (float)(box.maxZ - origin.getZ() - 0.5D) + FIELD_OUTSET;
+        for(Direction side : new Direction[] { Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST, Direction.UP })
+        {
+            boolean seen = switch(side)
+            {
+                case NORTH -> eye.z < box.minZ;
+                case SOUTH -> eye.z > box.maxZ;
+                case WEST -> eye.x < box.minX;
+                case EAST -> eye.x > box.maxX;
+                default -> eye.y > box.maxY;
+            };
+            if(!seen)
+            {
+                //Seen from inside: its back (ScreenBack), as far up as the wall has risen; the roof once it is closed. Only
+                //from right inside the field: from outside, the far walls' insides showed through the near walls.
+                if(!switchingOff && box.contains(eye))
+                {
+                    drawFieldBack(key, side, x0, x1, y0, y1, z0, z1, Math.min(rise, height + 0.01F), rise >= full, origin, pose, buffers, partialTick);
+                }
+                continue;
+            }
+            boolean roof = side == Direction.UP;
+            ScreenImage image = image(spy, key, placement, true, roof ? roofView(box, eye) : side, switchingOff, null);
+            if(image == null)
+            {
+                continue;
+            }
+            VertexConsumer consumer = image.consumer(buffers, true);
+            //Walls rise (the wave's radius is how high they are); the roof closes once they are up.
+            int[] wave = encodeWave(roof ? rise - height + 0.5F : rise, false);
+            wave[3] = roof ? 0 : 128;
+            Vector3f n = new Vector3f(side.getStepX(), side.getStepY(), side.getStepZ());
+            float[][] corners = switch(side)
+            {
+                case NORTH -> new float[][] { { x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 } };
+                case SOUTH -> new float[][] { { x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 } };
+                case WEST -> new float[][] { { x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 } };
+                case EAST -> new float[][] { { x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 } };
+                default -> new float[][] { { x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 } };
+            };
+            for(float[] c : corners)
+            {
+                //Position on the field for the nano pixels: along the wall and up it (the roof: across it).
+                float u = roof ? c[0] - x0 : (c[0] - x0) + (c[2] - z0);
+                float v = roof ? c[2] - z0 : c[1] - y0;
+                consumer.addVertex(pose, c[0], c[1], c[2])
+                        .setColor(wave[0], wave[1], wave[2], wave[3])
+                        .setUv(u, v)
+                        .setUv1(32767, 32767)
+                        .setUv2(0, 0)
+                        .setNormal(pose, n.x, n.y, n.z);
+            }
+        }
+    }
+
+    /** The inside of one side of a cloak field (corners from the projector's centre). */
+    private static void drawFieldBack(String key, Direction side, float x0, float x1, float y0, float y1, float z0, float z1, float risen, boolean closed,
+                                      BlockPos origin, PoseStack.Pose pose, MultiBufferSource buffers, float partialTick)
+    {
+        Vec3 centre = Vec3.atCenterOf(origin);
+        float w = x1 - x0, d = z1 - z0;
+        //Walls are drawn from where their surface coordinates start (they run on round the field, as on the outside).
+        switch(side)
+        {
+            case NORTH -> ScreenBack.drawFieldSide(key, new Vector3f(x0, y0, z0), new Vector3f(1F, 0F, 0F), new Vector3f(0F, 1F, 0F), w, risen, 0F, centre, pose, buffers, partialTick);
+            case SOUTH -> ScreenBack.drawFieldSide(key, new Vector3f(x0, y0, z1), new Vector3f(1F, 0F, 0F), new Vector3f(0F, 1F, 0F), w, risen, d, centre, pose, buffers, partialTick);
+            case WEST -> ScreenBack.drawFieldSide(key, new Vector3f(x0, y0, z0), new Vector3f(0F, 0F, 1F), new Vector3f(0F, 1F, 0F), d, risen, 0F, centre, pose, buffers, partialTick);
+            case EAST -> ScreenBack.drawFieldSide(key, new Vector3f(x1, y0, z0), new Vector3f(0F, 0F, 1F), new Vector3f(0F, 1F, 0F), d, risen, w, centre, pose, buffers, partialTick);
+            default ->
+            {
+                if(closed)
+                {
+                    ScreenBack.drawFieldSide(key, new Vector3f(x0, y1, z0), new Vector3f(1F, 0F, 0F), new Vector3f(0F, 0F, 1F), w, d, 0F, centre, pose, buffers, partialTick);
+                }
+            }
+        }
+    }
+
+    /**
+     * Which view a cloak field's roof shows. From beside the field the view of the wall facing the eye is right for the
+     * roof too (its clip plane is the far wall, so whatever is around the field stays, and the wall's ground covers the
+     * floor). Only from right above it the roof needs its own view, clipped at the floor.
+     */
+    private static Direction roofView(net.minecraft.world.phys.AABB box, Vec3 eye)
+    {
+        double dx = eye.x < box.minX ? box.minX - eye.x : Math.max(0D, eye.x - box.maxX);
+        double dz = eye.z < box.minZ ? box.minZ - eye.z : Math.max(0D, eye.z - box.maxZ);
+        if(dx <= 0D && dz <= 0D)
+        {
+            return Direction.UP;
+        }
+        if(dx >= dz)
+        {
+            return eye.x < box.minX ? Direction.WEST : Direction.EAST;
+        }
+        return eye.z < box.minZ ? Direction.NORTH : Direction.SOUTH;
     }
 
     /** True when the outside of this face points towards the eye. */
@@ -383,22 +531,17 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
                 .setNormal(pose, n.x, n.y, n.z);
     }
 
-    /** The floating screen between wireless extensions (its corners are already relative to the projector). */
-    private static void drawNanoWireless(GlassProjectorBlockEntity master, PoseStack.Pose pose, VertexConsumer consumer, int[] wave,
-                                         @org.jetbrains.annotations.Nullable Vec3 punchPoint, int[] ring)
+    /** The floating screen's corners, from the projector's centre: the projector, then the wireless extensions in order. */
+    static List<Vector3f> wirelessPoints(GlassProjectorBlockEntity master)
     {
+        List<Vector3f> points = new ArrayList<>();
         if(master.wirelessPos.size() < 2)
         {
-            return;
+            return points;
         }
         Direction face = master.placingFace;
-        Vector3f n = new Vector3f(face.getStepX(), face.getStepY(), face.getStepZ());
-        Vector3f u = face.getAxis() == Direction.Axis.Y ? new Vector3f(1F, 0F, 0F) : new Vector3f(0F, 1F, 0F);
-        Vector3f v = new Vector3f(n).cross(u);
-        int[] hit = punchOnScreen(punchPoint, u, v);
         double pushback = 0.501D;
         BlockPos masterPos = master.getBlockPos();
-        List<Vector3f> points = new ArrayList<>();
         points.add(new Vector3f((float)(face.getStepX() * pushback), (float)(face.getStepY() * pushback), (float)(face.getStepZ() * pushback)));
         for(BlockPos pos : master.wirelessPos)
         {
@@ -407,6 +550,38 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
             float pZ = (float)(face.getStepZ() * pushback * (face.getStepZ() > 0 && pos.getZ() > masterPos.getZ() ? -1D : 1D));
             points.add(new Vector3f(pos.getX() - masterPos.getX() + pX, pos.getY() - masterPos.getY() + pY, pos.getZ() - masterPos.getZ() + pZ));
         }
+        return points;
+    }
+
+    /** Across a floating screen facing this way: up it (along the floor for a screen lying flat). */
+    static Vector3f wirelessU(Direction face)
+    {
+        return face.getAxis() == Direction.Axis.Y ? new Vector3f(1F, 0F, 0F) : new Vector3f(0F, 1F, 0F);
+    }
+
+    /** True if the eye is on the side of the floating screen its projector faces (where the image is meant to be seen). */
+    private static boolean inFrontOf(GlassProjectorBlockEntity master, Vector3f onScreen)
+    {
+        Vec3 eye = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        Direction face = master.placingFace;
+        Vec3 local = eye.subtract(Vec3.atCenterOf(master.getBlockPos()));
+        return local.x * face.getStepX() + local.y * face.getStepY() + local.z * face.getStepZ()
+                > onScreen.x * face.getStepX() + onScreen.y * face.getStepY() + onScreen.z * face.getStepZ();
+    }
+
+    /** The floating screen between wireless extensions (its corners are already relative to the projector). */
+    private static void drawNanoWireless(GlassProjectorBlockEntity master, List<Vector3f> points, PoseStack.Pose pose, VertexConsumer consumer, int[] wave,
+                                         @org.jetbrains.annotations.Nullable Vec3 punchPoint, int[] ring)
+    {
+        if(points.size() < 3)
+        {
+            return;
+        }
+        Direction face = master.placingFace;
+        Vector3f n = new Vector3f(face.getStepX(), face.getStepY(), face.getStepZ());
+        Vector3f u = wirelessU(face);
+        Vector3f v = new Vector3f(n).cross(u);
+        int[] hit = punchOnScreen(punchPoint, u, v);
         for(int i = 0; i + 2 < points.size(); i++)
         {
             Vector3f[] tri = { points.get(i), points.get(i + 1), points.get(i + 2), points.get(i + 2) };

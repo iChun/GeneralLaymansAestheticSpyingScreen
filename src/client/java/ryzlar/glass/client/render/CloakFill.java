@@ -35,8 +35,8 @@ import java.util.List;
  * would be there if the hidden blocks were not, nobody knows, so it is made up from what is around it: the height of
  * the ground around the hidden part carries on smoothly across it, its top is the block of the nearest column around it
  * (grass, sand, snow...), and grass and flowers grow on it as densely as around it. Beside the hidden part (also cut
- * away) the real ground is drawn back in, and just behind it the real ground is drawn again without the dark edges the
- * hidden blocks left in its baked-in shading.
+ * away) the real world is drawn back in, houses, crops and water included, and just behind it the real ground is drawn
+ * again without the dark edges the hidden blocks left in its baked-in shading.
  * <p>
  * The blocks are drawn by the game's own block renderer through a {@link Terrain} view of the world with the hidden part
  * replaced, so faces, smooth lighting and ambient occlusion come out like the real terrain around it. The result is
@@ -44,10 +44,12 @@ import java.util.List;
  */
 public final class CloakFill
 {
-    /** Ground beside the hidden part drawn back in, in blocks (a ray through the glass at an angle runs far sideways). */
-    private static final int SPREAD = 24;
+    /** The world beside the hidden part drawn back in, in blocks (a ray through the glass at an angle runs far sideways). */
+    public static final int SPREAD = 32;
     /** Rows of ground just behind the hidden part that are drawn again. */
-    private static final int RING = 2;
+    public static final int RING = 2;
+    /** How far above the hidden part the world beside it is drawn back in (a ray up through the glass sees trees there). */
+    private static final int ABOVE = 4;
     /** Rows of ground around the hidden part its new ground is worked out from. */
     private static final int SAMPLE = 3;
     /** How far up and down the ground is looked for, from the screen's bottom, in blocks. */
@@ -60,10 +62,25 @@ public final class CloakFill
 
     /**
      * Where a cloak side is, in its own terms: {@code along} counts block rows from the screen's outer glass back into
-     * the hidden part (0 is the glass itself), {@code across} runs sideways along the screen.
+     * the hidden part (0 is the glass itself), {@code across} runs sideways along the screen. The world is drawn back in
+     * from {@code before} rows in front of the glass to {@code after} rows behind the hidden part and {@code spread}
+     * columns to either side of it, and {@code ring} rows of ground behind that are drawn again.
      */
-    public record Area(Direction side, int groundY, int minAcross, int maxAcross, int outerBlock, int depth, AABB hidden, BlockPos lightPos)
+    public record Area(Direction side, int groundY, int minAcross, int maxAcross, int outerBlock, int depth, AABB hidden, BlockPos lightPos,
+                       int before, int after, int spread, int ring)
     {
+        /** A screen's side: the world beside the hidden part is drawn back in, and the ground just behind it. */
+        public static Area side(Direction side, int groundY, int minAcross, int maxAcross, int outerBlock, int depth, AABB hidden, BlockPos lightPos)
+        {
+            return new Area(side, groundY, minAcross, maxAcross, outerBlock, depth, hidden, lightPos, 0, 0, SPREAD, RING);
+        }
+
+        /** Seen from above: the world all around the hidden part is drawn back in. */
+        public Area allAround(int margin)
+        {
+            return new Area(side, groundY, minAcross, maxAcross, outerBlock, depth, hidden, lightPos, margin, margin, margin, 0);
+        }
+
         BlockPos column(int along, int across, int y)
         {
             Direction right = side.getClockWise();
@@ -98,7 +115,8 @@ public final class CloakFill
         {
             return;
         }
-        builtAt = now;
+        //Later rebuilds of a cloak's sides are spread over the second instead of all landing on the same frame.
+        builtAt = builtAt == Long.MIN_VALUE ? now - area.side().ordinal() * 3L % REFRESH_TICKS : now;
         build(level);
     }
 
@@ -123,6 +141,7 @@ public final class CloakFill
     {
         fill.clear();
         ring.clear();
+        Long2ObjectOpenHashMap<Column> realColumns = new Long2ObjectOpenHashMap<>();
 
         //The ground around the hidden part.
         List<int[]> samplePos = new ArrayList<>();
@@ -136,7 +155,7 @@ public final class CloakFill
                 {
                     continue;
                 }
-                Column column = realColumn(level, area.column(along, across, 0));
+                Column column = realColumn(level, area.column(along, across, 0), realColumns);
                 if(column != null)
                 {
                     samplePos.add(new int[] { along, across });
@@ -148,91 +167,108 @@ public final class CloakFill
                 }
             }
         }
-        if(samples.isEmpty())
-        {
-            return;
-        }
         //The ground in front of the screen is certainly ground (the viewer stands on it); around the sides and back there
         //may be more of the base. Keep the made-up ground near the front's height.
         int reference = frontHeights.isEmpty() ? area.groundY() : median(frontHeights);
+        //What the ground is like is told by the natural ground around it (grass, sand, stone...), not by a house or a lamp
+        //post that happens to stand beside the hidden part. Only if there is nothing else, everything counts.
+        List<int[]> groundPos = new ArrayList<>();
+        List<Column> ground = new ArrayList<>();
+        for(int i = 0; i < samples.size(); i++)
+        {
+            Column sample = samples.get(i);
+            if(isNatural(sample.top()) && Math.abs(sample.height() - reference) <= MAX_RISE)
+            {
+                groundPos.add(samplePos.get(i));
+                ground.add(sample);
+            }
+        }
+        if(ground.isEmpty())
+        {
+            groundPos = samplePos;
+            ground = samples;
+        }
         int plants = 0;
-        for(Column sample : samples)
+        for(Column sample : ground)
         {
             if(sample.plant() != null)
             {
                 plants++;
             }
         }
-        float plantChance = (float)plants / samples.size();
+        float plantChance = ground.isEmpty() ? 0F : (float)plants / ground.size();
 
         //Made-up ground for the hidden columns.
         Long2ObjectOpenHashMap<Column> made = new Long2ObjectOpenHashMap<>();
-        for(int along = 0; along < area.depth(); along++)
+        if(!ground.isEmpty())
         {
-            for(int across = area.minAcross(); across <= area.maxAcross(); across++)
+            for(int along = 0; along < area.depth(); along++)
             {
-                double weights = 0D;
-                double heights = 0D;
-                Column nearest = null;
-                double nearestDistance = Double.MAX_VALUE;
-                for(int i = 0; i < samples.size(); i++)
+                for(int across = area.minAcross(); across <= area.maxAcross(); across++)
                 {
-                    int[] p = samplePos.get(i);
-                    double d2 = (p[0] - along) * (p[0] - along) + (p[1] - across) * (p[1] - across);
-                    double w = 1D / (d2 * d2);
-                    weights += w;
-                    heights += w * samples.get(i).height();
-                    if(d2 < nearestDistance)
+                    double weights = 0D;
+                    double heights = 0D;
+                    Column nearest = null;
+                    double nearestDistance = Double.MAX_VALUE;
+                    for(int i = 0; i < ground.size(); i++)
                     {
-                        nearestDistance = d2;
-                        nearest = samples.get(i);
+                        int[] p = groundPos.get(i);
+                        double d2 = (p[0] - along) * (p[0] - along) + (p[1] - across) * (p[1] - across);
+                        double w = 1D / (d2 * d2);
+                        weights += w;
+                        heights += w * ground.get(i).height();
+                        if(d2 < nearestDistance)
+                        {
+                            nearestDistance = d2;
+                            nearest = ground.get(i);
+                        }
                     }
+                    int height = Math.clamp(Math.round(heights / weights), reference - MAX_RISE, reference + MAX_RISE);
+                    BlockPos pos = area.column(along, across, height);
+                    BlockState plant = null;
+                    if(hash(pos, 17) < plantChance)
+                    {
+                        plant = pickPlant(ground, nearest.top(), hash(pos, 31));
+                    }
+                    made.put(columnKey(pos), new Column(height, nearest.top(), nearest.filler(), plant));
                 }
-                int height = Math.clamp(Math.round(heights / weights), reference - MAX_RISE, reference + MAX_RISE);
-                BlockPos pos = area.column(along, across, height);
-                BlockState plant = null;
-                if(hash(pos, 17) < plantChance)
-                {
-                    plant = pickPlant(samples, hash(pos, 31));
-                }
-                made.put(columnKey(pos), new Column(height, nearest.top(), nearest.filler(), plant));
             }
         }
 
         Terrain terrain = new Terrain(level, area, made);
-        Minecraft mc = Minecraft.getInstance();
-        PoseStack pose = new PoseStack();
-        RandomSource random = RandomSource.create();
-        List<BlockModelPart> parts = new ArrayList<>();
-        BlockPos origin = area.lightPos();
-
-        for(int along = 0; along < area.depth() + RING; along++)
+        Drawer drawer = new Drawer(terrain, area.lightPos());
+        int aboveHidden = (int)Math.ceil(area.hidden().maxY);
+        int top = aboveHidden + ABOVE;
+        int lowest = area.groundY() - SCAN;
+        int lastFillRow = area.depth() + area.after();
+        for(int along = -area.before(); along < lastFillRow + area.ring(); along++)
         {
-            boolean behind = along >= area.depth();
-            for(int across = area.minAcross() - SPREAD; across <= area.maxAcross() + SPREAD; across++)
+            boolean behind = along >= lastFillRow;
+            for(int across = area.minAcross() - area.spread(); across <= area.maxAcross() + area.spread(); across++)
             {
                 BlockPos base = area.column(along, across, 0);
                 Column column = made.get(columnKey(base));
-                if(column == null)
+                if(behind)
                 {
-                    column = realColumn(level, base);
-                }
-                if(column == null)
-                {
+                    //Just behind the hidden part: the top of the real ground again.
+                    column = realColumn(level, base, realColumns);
+                    if(column != null)
+                    {
+                        drawer.draw(ring, new BlockPos(base.getX(), column.height(), base.getZ()));
+                    }
                     continue;
                 }
-                Mesh mesh = behind ? ring : fill;
-                //Down to the lowest neighbour, so the sides of steps are drawn too (not behind: just the top again).
-                int bottom = column.height();
-                if(!behind)
+                if(column != null)
                 {
+                    //Made-up ground: down to the lowest neighbour, so the sides of steps are drawn too.
+                    int bottom = column.height();
                     for(Direction direction : Direction.Plane.HORIZONTAL)
                     {
                         BlockPos next = base.relative(direction);
                         Column neighbour = made.get(columnKey(next));
                         if(neighbour == null)
                         {
-                            neighbour = realColumn(level, next);
+                            neighbour = realColumn(level, next, realColumns);
                         }
                         if(neighbour != null)
                         {
@@ -240,27 +276,105 @@ public final class CloakFill
                         }
                     }
                     bottom = Math.max(bottom, column.height() - 3);
-                }
-                int top = behind || column.plant() == null ? column.height() : column.height() + 1;
-                for(int y = bottom; y <= top; y++)
-                {
-                    BlockPos pos = new BlockPos(base.getX(), y, base.getZ());
-                    BlockState state = terrain.getBlockState(pos);
-                    if(state.isAir() || state.getRenderShape() != RenderShape.MODEL)
+                    int plantTop = column.plant() == null ? column.height() : column.height() + 1;
+                    for(int y = bottom; y <= plantTop; y++)
                     {
-                        continue;
+                        drawer.draw(fill, new BlockPos(base.getX(), y, base.getZ()));
                     }
-                    parts.clear();
-                    random.setSeed(state.getSeed(pos));
-                    mc.getBlockRenderer().getBlockModel(state).collectParts(random, parts);
-                    pose.pushPose();
-                    pose.translate(pos.getX() - origin.getX(), pos.getY() - origin.getY(), pos.getZ() - origin.getZ());
-                    mesh.origin = origin;
-                    mc.getBlockRenderer().renderBatched(state, pos, terrain, pose, mesh, true, parts);
-                    pose.popPose();
+                    //And whatever hangs over the hidden part (a tree's leaves).
+                    for(int y = Math.max(aboveHidden, plantTop + 1); y <= top; y++)
+                    {
+                        drawer.draw(fill, new BlockPos(base.getX(), y, base.getZ()));
+                    }
+                    continue;
+                }
+                //The real world beside the hidden part (the clip plane cut it away too): everything from just under its
+                //ground (or its lowest neighbour's) up, so houses, fences and crops come back as well as the ground.
+                int low = area.groundY();
+                Column real = realColumn(level, base, realColumns);
+                if(real != null)
+                {
+                    low = Math.min(low, real.height());
+                }
+                for(Direction direction : Direction.Plane.HORIZONTAL)
+                {
+                    BlockPos next = base.relative(direction);
+                    Column neighbour = made.get(columnKey(next));
+                    if(neighbour == null)
+                    {
+                        neighbour = realColumn(level, next, realColumns);
+                    }
+                    if(neighbour != null)
+                    {
+                        low = Math.min(low, neighbour.height());
+                    }
+                }
+                for(int y = Math.max(low - 1, lowest); y <= top; y++)
+                {
+                    drawer.draw(fill, new BlockPos(base.getX(), y, base.getZ()));
                 }
             }
         }
+    }
+
+    /** Draws blocks of the {@link Terrain} into a mesh: their models, and their water or lava. */
+    private static final class Drawer
+    {
+        private final Minecraft mc = Minecraft.getInstance();
+        private final Terrain terrain;
+        private final BlockPos origin;
+        private final PoseStack pose = new PoseStack();
+        private final RandomSource random = RandomSource.create();
+        private final List<BlockModelPart> parts = new ArrayList<>();
+
+        Drawer(Terrain terrain, BlockPos origin)
+        {
+            this.terrain = terrain;
+            this.origin = origin;
+        }
+
+        void draw(Mesh mesh, BlockPos pos)
+        {
+            BlockState state = terrain.getBlockState(pos);
+            if(state.isAir())
+            {
+                return;
+            }
+            mesh.origin = origin;
+            FluidState fluid = state.getFluidState();
+            if(!fluid.isEmpty())
+            {
+                //The liquid renderer puts its corners relative to the section the block is in.
+                mesh.offset((pos.getX() & ~15) - origin.getX(), (pos.getY() & ~15) - origin.getY(), (pos.getZ() & ~15) - origin.getZ());
+                mc.getBlockRenderer().renderLiquid(pos, terrain, mesh, state, fluid);
+                mesh.offset(0F, 0F, 0F);
+            }
+            if(state.getRenderShape() != RenderShape.MODEL)
+            {
+                return;
+            }
+            parts.clear();
+            random.setSeed(state.getSeed(pos));
+            mc.getBlockRenderer().getBlockModel(state).collectParts(random, parts);
+            pose.pushPose();
+            pose.translate(pos.getX() - origin.getX(), pos.getY() - origin.getY(), pos.getZ() - origin.getZ());
+            mc.getBlockRenderer().renderBatched(state, pos, terrain, pose, mesh, true, parts);
+            pose.popPose();
+        }
+    }
+
+    /** {@link #realColumn(ClientLevel, BlockPos)}, each column looked up once per build. */
+    @Nullable
+    private Column realColumn(ClientLevel level, BlockPos column, Long2ObjectOpenHashMap<Column> known)
+    {
+        long key = columnKey(column);
+        if(known.containsKey(key))
+        {
+            return known.get(key);
+        }
+        Column found = realColumn(level, column);
+        known.put(key, found);
+        return found;
     }
 
     /**
@@ -294,9 +408,37 @@ public final class CloakFill
         return null;
     }
 
+    /**
+     * Something to stand on: a block with a solid top, or one standing solidly on what is under it that is at least half
+     * a block tall (paths and farmland are a little lower than a full block).
+     */
     private static boolean isGround(BlockState state, BlockAndTintGetter level, BlockPos pos)
     {
-        return !state.isAir() && state.getRenderShape() == RenderShape.MODEL && state.isFaceSturdy(level, pos, Direction.UP);
+        if(state.isAir() || state.getRenderShape() != RenderShape.MODEL)
+        {
+            return false;
+        }
+        if(state.isFaceSturdy(level, pos, Direction.UP))
+        {
+            return true;
+        }
+        if(!state.isFaceSturdy(level, pos, Direction.DOWN))
+        {
+            return false;
+        }
+        net.minecraft.world.phys.shapes.VoxelShape shape = state.getCollisionShape(level, pos);
+        return !shape.isEmpty() && shape.max(Direction.Axis.Y) >= 0.5D;
+    }
+
+    /** Ground nature made (or a path or field on it), not a house or a lamp post. */
+    private static boolean isNatural(BlockState state)
+    {
+        return state.is(net.minecraft.tags.BlockTags.DIRT) || state.is(net.minecraft.tags.BlockTags.SAND)
+                || state.is(net.minecraft.tags.BlockTags.BASE_STONE_OVERWORLD) || state.is(net.minecraft.tags.BlockTags.BASE_STONE_NETHER)
+                || state.is(net.minecraft.tags.BlockTags.NYLIUM) || state.is(net.minecraft.tags.BlockTags.SNOW)
+                || state.is(net.minecraft.tags.BlockTags.TERRACOTTA) || state.is(Blocks.GRAVEL) || state.is(Blocks.DIRT_PATH)
+                || state.is(Blocks.FARMLAND) || state.is(Blocks.CLAY) || state.is(Blocks.SANDSTONE) || state.is(Blocks.RED_SANDSTONE)
+                || state.is(Blocks.END_STONE) || state.is(Blocks.ICE) || state.is(Blocks.PACKED_ICE);
     }
 
     /** Grass, flowers and the like: one block tall, nothing to bump into. */
@@ -317,12 +459,13 @@ public final class CloakFill
     }
 
     @Nullable
-    private static BlockState pickPlant(List<Column> samples, float pick)
+    private static BlockState pickPlant(List<Column> samples, BlockState top, float pick)
     {
+        //Only what grows on the same ground (no wheat on grass, no grass on sand).
         List<BlockState> plants = new ArrayList<>();
         for(Column sample : samples)
         {
-            if(sample.plant() != null)
+            if(sample.plant() != null && sample.top().getBlock() == top.getBlock())
             {
                 plants.add(sample.plant());
             }
@@ -372,7 +515,7 @@ public final class CloakFill
         public BlockState getBlockState(BlockPos pos)
         {
             Column column = made.get(columnKey(pos));
-            if(column != null && pos.getY() >= column.height() - 3 && pos.getY() <= Math.max(area.hidden().maxY, column.height() + 1))
+            if(column != null && pos.getY() >= column.height() - 3 && (pos.getY() <= column.height() + 1 || pos.getY() + 0.5D < area.hidden().maxY))
             {
                 if(pos.getY() == column.height())
                 {
@@ -465,6 +608,15 @@ public final class CloakFill
         private final IntArrayList ints = new IntArrayList(); //colour, light
         BlockPos origin = BlockPos.ZERO;
         private BlockPos replayOrigin = BlockPos.ZERO;
+        private float offsetX, offsetY, offsetZ;
+
+        /** Moves the vertices that follow (the liquid renderer works relative to a section). */
+        void offset(float x, float y, float z)
+        {
+            offsetX = x;
+            offsetY = y;
+            offsetZ = z;
+        }
 
         void clear()
         {
@@ -490,9 +642,9 @@ public final class CloakFill
         public VertexConsumer addVertex(float x, float y, float z)
         {
             replayOrigin = origin;
-            floats.add(x);
-            floats.add(y);
-            floats.add(z);
+            floats.add(x + offsetX);
+            floats.add(y + offsetY);
+            floats.add(z + offsetZ);
             floats.add(0F);
             floats.add(0F);
             ints.add(-1);

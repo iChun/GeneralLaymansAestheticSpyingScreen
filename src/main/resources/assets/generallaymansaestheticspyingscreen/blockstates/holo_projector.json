@@ -1,7 +1,7 @@
 {
   "variants": {
     "": {
-      "model": "minecraft:block/respawn_anchor_4"
+      "model": "generallaymansaestheticspyingscreen:block/holo_projector"
     }
   }
 }

@@ -161,13 +161,15 @@ public final class GlassNetworking
     }
 
     /** Turns a projector's cloak mode on or off, and sets how many blocks behind the screen it hides. */
-    public record ConfigureCloak(BlockPos pos, boolean cloak, int depth) implements CustomPacketPayload
+    public record ConfigureCloak(BlockPos pos, boolean cloak, int depth, boolean field, int fieldHeight) implements CustomPacketPayload
     {
         public static final Type<ConfigureCloak> TYPE = new Type<>(Glass.id("configure_cloak"));
         public static final StreamCodec<ByteBuf, ConfigureCloak> CODEC = StreamCodec.composite(
                 BlockPos.STREAM_CODEC, ConfigureCloak::pos,
                 ByteBufCodecs.BOOL, ConfigureCloak::cloak,
                 ByteBufCodecs.VAR_INT, ConfigureCloak::depth,
+                ByteBufCodecs.BOOL, ConfigureCloak::field,
+                ByteBufCodecs.VAR_INT, ConfigureCloak::fieldHeight,
                 ConfigureCloak::new);
 
         @Override
@@ -213,6 +215,22 @@ public final class GlassNetworking
         }
     }
 
+    /** Disconnects a wireless extension from a projector (from the extension's screen). */
+    public record UnlinkWireless(BlockPos wirelessPos, BlockPos projectorPos) implements CustomPacketPayload
+    {
+        public static final Type<UnlinkWireless> TYPE = new Type<>(Glass.id("unlink_wireless"));
+        public static final StreamCodec<ByteBuf, UnlinkWireless> CODEC = StreamCodec.composite(
+                BlockPos.STREAM_CODEC, UnlinkWireless::wirelessPos,
+                BlockPos.STREAM_CODEC, UnlinkWireless::projectorPos,
+                UnlinkWireless::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type()
+        {
+            return TYPE;
+        }
+    }
+
     /** Reorders (or removes) the wireless extensions linked to a projector. */
     public record WirelessOrder(BlockPos projectorPos, List<BlockPos> order) implements CustomPacketPayload
     {
@@ -240,6 +258,7 @@ public final class GlassNetworking
         PayloadTypeRegistry.playC2S().register(ConfigureCloak.TYPE, ConfigureCloak.CODEC);
         PayloadTypeRegistry.playC2S().register(SelectorAction.TYPE, SelectorAction.CODEC);
         PayloadTypeRegistry.playC2S().register(WirelessOrder.TYPE, WirelessOrder.CODEC);
+        PayloadTypeRegistry.playC2S().register(UnlinkWireless.TYPE, UnlinkWireless.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(NetAction.TYPE, (payload, context) -> handleAction(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(TerminalAction.TYPE, (payload, context) -> handleTerminal(context.player(), payload));
@@ -248,6 +267,7 @@ public final class GlassNetworking
         ServerPlayNetworking.registerGlobalReceiver(SelectorAction.TYPE, (payload, context) -> handleSelector(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(SetProjector.TYPE, (payload, context) -> handleSetProjector(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(WirelessOrder.TYPE, (payload, context) -> handleWirelessOrder(context.player(), payload));
+        ServerPlayNetworking.registerGlobalReceiver(UnlinkWireless.TYPE, (payload, context) -> handleUnlinkWireless(context.player(), payload));
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> GlassNetworkManager.onJoin(handler.getPlayer()));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> GlassNetworkManager.onLeave(handler.getPlayer()));
@@ -386,6 +406,8 @@ public final class GlassNetworking
         }
         projector.cloak = payload.cloak();
         projector.cloakDepth = Math.clamp(payload.depth(), 1, GlassProjectorBlockEntity.MAX_CLOAK_DEPTH);
+        projector.cloakField = payload.field();
+        projector.fieldHeight = Math.clamp(payload.fieldHeight(), 1, GlassProjectorBlockEntity.MAX_FIELD_HEIGHT);
         if(projector.active && !projector.hasFeed())
         {
             projector.turnOff();
@@ -409,6 +431,27 @@ public final class GlassNetworking
             projector.wirelessPos.add(payload.wirelessPos());
             projector.sync();
             reply(player, GlassNetworkManager.Result.ok("glass.msg.wirelessLinked", ""));
+        }
+    }
+
+    private static void handleUnlinkWireless(ServerPlayer player, UnlinkWireless payload)
+    {
+        ServerLevel level = player.level();
+        if(!canReach(player, payload.wirelessPos()) || !level.isLoaded(payload.projectorPos()))
+        {
+            return;
+        }
+        if(level.getBlockEntity(payload.projectorPos()) instanceof GlassProjectorBlockEntity projector && projector.wirelessPos.contains(payload.wirelessPos()))
+        {
+            //Like reordering: the screen's shape is fixed while it is on.
+            if(projector.active)
+            {
+                reply(player, GlassNetworkManager.Result.fail("glass.msg.switchOffFirst"));
+                return;
+            }
+            projector.wirelessPos.remove(payload.wirelessPos());
+            projector.sync();
+            reply(player, GlassNetworkManager.Result.ok("glass.msg.wirelessUnlinked", ""));
         }
     }
 

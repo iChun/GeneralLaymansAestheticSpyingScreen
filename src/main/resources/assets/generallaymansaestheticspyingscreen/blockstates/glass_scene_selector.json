@@ -1,1 +1,7 @@
-{ "variants": { "": { "model": "minecraft:block/lodestone" } } }
+{
+  "variants": {
+    "": {
+      "model": "generallaymansaestheticspyingscreen:block/glass_scene_selector"
+    }
+  }
+}

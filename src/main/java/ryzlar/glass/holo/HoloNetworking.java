@@ -125,16 +125,18 @@ public final class HoloNetworking
         }
     }
 
-    /** A room scan's state, for the player scanning: whether it runs, how far it is, and the box it scans in. */
-    public record ScanStatus(boolean active, float progress, BlockPos min, BlockPos max) implements CustomPacketPayload
+
+    /** The blocks of a projection: a palette of block state ids, and a palette index per block. */
+    /** Part of a scan's panorama, from the client that took it (see PanoramaStore). */
+    public record PanoramaUpload(String id, int index, int total, byte[] data) implements CustomPacketPayload
     {
-        public static final Type<ScanStatus> TYPE = new Type<>(Glass.id("scan_status"));
-        public static final StreamCodec<ByteBuf, ScanStatus> CODEC = StreamCodec.composite(
-                ByteBufCodecs.BOOL, ScanStatus::active,
-                ByteBufCodecs.FLOAT, ScanStatus::progress,
-                BlockPos.STREAM_CODEC, ScanStatus::min,
-                BlockPos.STREAM_CODEC, ScanStatus::max,
-                ScanStatus::new);
+        public static final Type<PanoramaUpload> TYPE = new Type<>(Glass.id("panorama_upload"));
+        public static final StreamCodec<ByteBuf, PanoramaUpload> CODEC = StreamCodec.composite(
+                SHORT_STRING, PanoramaUpload::id,
+                ByteBufCodecs.VAR_INT, PanoramaUpload::index,
+                ByteBufCodecs.VAR_INT, PanoramaUpload::total,
+                ByteBufCodecs.byteArray(PanoramaStore.UPLOAD_PART), PanoramaUpload::data,
+                PanoramaUpload::new);
 
         @Override
         public Type<? extends CustomPacketPayload> type()
@@ -143,7 +145,37 @@ public final class HoloNetworking
         }
     }
 
-    /** The blocks of a projection: a palette of block state ids, and a palette index per block. */
+    /** Asks for a scan's panorama. */
+    public record RequestPanorama(String id) implements CustomPacketPayload
+    {
+        public static final Type<RequestPanorama> TYPE = new Type<>(Glass.id("request_panorama"));
+        public static final StreamCodec<ByteBuf, RequestPanorama> CODEC = SHORT_STRING.map(RequestPanorama::new, RequestPanorama::id);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type()
+        {
+            return TYPE;
+        }
+    }
+
+    /** Part of a scan's panorama, for a client that asked (zero parts: there is none yet). */
+    public record PanoramaDownload(String id, int index, int total, byte[] data) implements CustomPacketPayload
+    {
+        public static final Type<PanoramaDownload> TYPE = new Type<>(Glass.id("panorama_download"));
+        public static final StreamCodec<ByteBuf, PanoramaDownload> CODEC = StreamCodec.composite(
+                SHORT_STRING, PanoramaDownload::id,
+                ByteBufCodecs.VAR_INT, PanoramaDownload::index,
+                ByteBufCodecs.VAR_INT, PanoramaDownload::total,
+                ByteBufCodecs.byteArray(PanoramaStore.DOWNLOAD_PART), PanoramaDownload::data,
+                PanoramaDownload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type()
+        {
+            return TYPE;
+        }
+    }
+
     public record ProjectionBlocks(String id, int sizeX, int sizeY, int sizeZ, List<Integer> palette, List<Integer> blocks) implements CustomPacketPayload
     {
         public static final Type<ProjectionBlocks> TYPE = new Type<>(Glass.id("projection_blocks"));
@@ -171,10 +203,12 @@ public final class HoloNetworking
         PayloadTypeRegistry.playC2S().register(ProjectorAction.TYPE, ProjectorAction.CODEC);
         PayloadTypeRegistry.playC2S().register(RequestProjection.TYPE, RequestProjection.CODEC);
         PayloadTypeRegistry.playS2C().register(ProjectionBlocks.TYPE, ProjectionBlocks.CODEC);
-        PayloadTypeRegistry.playS2C().register(ScanStatus.TYPE, ScanStatus.CODEC);
-        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(HoloScanSessions::tick);
-        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> HoloScanSessions.stop(handler.getPlayer()));
-        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server -> HoloScanSessions.clear());
+        PayloadTypeRegistry.playC2S().register(PanoramaUpload.TYPE, PanoramaUpload.CODEC);
+        PayloadTypeRegistry.playC2S().register(RequestPanorama.TYPE, RequestPanorama.CODEC);
+        PayloadTypeRegistry.playS2C().register(PanoramaDownload.TYPE, PanoramaDownload.CODEC);
+        ServerPlayNetworking.registerGlobalReceiver(PanoramaUpload.TYPE, (payload, context) -> PanoramaStore.receive(context.player(), payload));
+        ServerPlayNetworking.registerGlobalReceiver(RequestPanorama.TYPE, (payload, context) -> PanoramaStore.send(context.player(), payload.id()));
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> PanoramaStore.forget(handler.getPlayer()));
 
         ServerPlayNetworking.registerGlobalReceiver(ScannerConfig.TYPE, (payload, context) -> handleScannerConfig(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(ScannerScan.TYPE, (payload, context) -> handleScan(context.player(), payload));

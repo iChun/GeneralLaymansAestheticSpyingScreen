@@ -5,12 +5,14 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "CameraMixin",
+    "CloudRendererMixin",
     "GameRendererAccessor",
     "GameRendererMixin",
     "LevelRendererAccessor",
     "LevelRendererMixin",
     "MinecraftMixin",
-    "SectionOcclusionGraphAccessor"
+    "SectionOcclusionGraphAccessor",
+    "SkyRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

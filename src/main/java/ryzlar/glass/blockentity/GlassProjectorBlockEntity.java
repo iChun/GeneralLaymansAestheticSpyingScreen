@@ -8,6 +8,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
 import ryzlar.glass.GlassRegistry;
 import ryzlar.glass.network.GlassNetworkData;
@@ -43,6 +44,13 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
      */
     public boolean cloak;
     public int cloakDepth = 4;
+    /**
+     * Cloak field: with wireless extensions in the four corners of a rectangle, the cloak is a box of virtual walls (and a
+     * roof) rising from them, {@link #fieldHeight} blocks high, hiding everything inside.
+     */
+    public boolean cloakField;
+    public int fieldHeight = 8;
+    public static final int MAX_FIELD_HEIGHT = 32;
     public static final int MAX_CLOAK_DEPTH = 32;
 
     //The camera being shown, resolved by the server
@@ -66,6 +74,66 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     public String screenKey()
     {
         return channelId.isEmpty() && !cloak ? "" : "screen@" + getBlockPos().asLong();
+    }
+
+    /**
+     * True if the wireless extensions are the four corners of a rectangle on one level (at least two blocks each way):
+     * where a cloak field can rise.
+     */
+    public boolean hasFieldCorners()
+    {
+        return fieldCorners(wirelessPos) != null;
+    }
+
+    /** The cloak field's box, or null when it is off or the extensions are not in a rectangle. */
+    @Nullable
+    public AABB cloakFieldBox()
+    {
+        if(!cloak || !cloakField)
+        {
+            return null;
+        }
+        int[] corners = fieldCorners(wirelessPos);
+        if(corners == null)
+        {
+            return null;
+        }
+        return new AABB(corners[0], corners[1], corners[2], corners[3] + 1, corners[1] + fieldHeight, corners[4] + 1);
+    }
+
+    /** minX, y, minZ, maxX, maxZ of four positions forming a rectangle's corners on one level, or null. */
+    @Nullable
+    private static int[] fieldCorners(List<BlockPos> positions)
+    {
+        if(positions.size() != 4)
+        {
+            return null;
+        }
+        int y = positions.getFirst().getY();
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        for(BlockPos pos : positions)
+        {
+            if(pos.getY() != y)
+            {
+                return null;
+            }
+            minX = Math.min(minX, pos.getX());
+            maxX = Math.max(maxX, pos.getX());
+            minZ = Math.min(minZ, pos.getZ());
+            maxZ = Math.max(maxZ, pos.getZ());
+        }
+        if(maxX - minX < 1 || maxZ - minZ < 1)
+        {
+            return null;
+        }
+        for(int[] corner : new int[][] { { minX, minZ }, { minX, maxZ }, { maxX, minZ }, { maxX, maxZ } })
+        {
+            if(!positions.contains(new BlockPos(corner[0], y, corner[1])))
+            {
+                return null;
+            }
+        }
+        return new int[] { minX, y, minZ, maxX, maxZ };
     }
 
     /** True when there is something to show once powered: a channel, or cloak mode. */
@@ -220,6 +288,8 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         output.putString("channelName", channelName);
         output.putBoolean("cloak", cloak);
         output.putInt("cloakDepth", cloakDepth);
+        output.putBoolean("cloakField", cloakField);
+        output.putInt("fieldHeight", fieldHeight);
         output.putBoolean("camValid", camValid);
         output.store("camDimension", Level.RESOURCE_KEY_CODEC, camDimension);
         output.store("camPos", BlockPos.CODEC, camPos);
@@ -237,6 +307,8 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         channelName = input.getStringOr("channelName", "");
         cloak = input.getBooleanOr("cloak", false);
         cloakDepth = Math.clamp(input.getIntOr("cloakDepth", 4), 1, MAX_CLOAK_DEPTH);
+        cloakField = input.getBooleanOr("cloakField", false);
+        fieldHeight = Math.clamp(input.getIntOr("fieldHeight", 8), 1, MAX_FIELD_HEIGHT);
         camValid = input.getBooleanOr("camValid", false);
         camDimension = input.read("camDimension", Level.RESOURCE_KEY_CODEC).orElse(Level.OVERWORLD);
         camPos = input.read("camPos", BlockPos.CODEC).orElse(BlockPos.ZERO);
@@ -249,7 +321,8 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     {
         if(cloak)
         {
-            return "cloak|" + cloakDepth;
+            AABB field = cloakFieldBox();
+            return field != null ? "field|" + field : "cloak|" + cloakDepth;
         }
         return camValid ? camDimension.location() + "|" + camPos.asLong() + "|" + camFacing : "";
     }

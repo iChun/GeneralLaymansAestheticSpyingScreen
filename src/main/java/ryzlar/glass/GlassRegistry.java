@@ -49,12 +49,12 @@ public final class GlassRegistry
     public static final GlassTerminalBlock GLASS_TERMINAL = registerBlock("glass_terminal", GlassTerminalBlock::new,
             BlockBehaviour.Properties.ofFullCopy(Blocks.OBSIDIAN).strength(50.0F, 2000.0F).sound(SoundType.STONE).noOcclusion());
     public static final GlassSceneSelectorBlock GLASS_SCENE_SELECTOR = registerBlock("glass_scene_selector", GlassSceneSelectorBlock::new,
-            BlockBehaviour.Properties.ofFullCopy(Blocks.LODESTONE).strength(2.5F).lightLevel(state -> 6));
+            BlockBehaviour.Properties.ofFullCopy(Blocks.LODESTONE).strength(2.5F).lightLevel(state -> 6).noOcclusion());
 
     public static final HoloBlocks.Scanner HOLO_SCANNER = registerBlock("holo_scanner", HoloBlocks.Scanner::new,
-            BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).strength(3.0F).lightLevel(state -> 5));
+            BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).strength(3.0F).lightLevel(state -> 5).noOcclusion());
     public static final HoloBlocks.Projector HOLO_PROJECTOR = registerBlock("holo_projector", HoloBlocks.Projector::new,
-            BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).strength(3.0F).lightLevel(state -> 8));
+            BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).strength(3.0F).lightLevel(state -> 8).noOcclusion());
     public static final HoloBlocks.Emitter HOLO_EMITTER = registerBlock("holo_emitter", HoloBlocks.Emitter::new,
             BlockBehaviour.Properties.ofFullCopy(Blocks.END_ROD).lightLevel(state -> 10));
 

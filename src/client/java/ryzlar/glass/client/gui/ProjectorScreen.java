@@ -32,6 +32,7 @@ public class ProjectorScreen extends HoloScreen
     private HoloButton unlock;
     private HoloButton show;
     private HoloButton cloak;
+    private HoloButton field;
     private String query = "";
     /** Show this channel as soon as the server confirms the password. */
     @Nullable
@@ -40,7 +41,7 @@ public class ProjectorScreen extends HoloScreen
 
     public ProjectorScreen(GlassProjectorBlockEntity projector)
     {
-        super(Component.translatable("glass.ui.projector"), 350, 236);
+        super(Component.translatable("glass.ui.projector"), 350, 256);
         this.projector = projector;
     }
 
@@ -81,6 +82,11 @@ public class ProjectorScreen extends HoloScreen
         cloak = addRenderableWidget(new HoloButton(rx, top + 180, rw, 14, cloakLabel(), b -> sendCloak(!projector.cloak, projector.cloakDepth)));
         addRenderableWidget(new HoloButton(rx, top + 198, 16, 14, Component.literal("-"), b -> sendCloak(projector.cloak, projector.cloakDepth - 1)));
         addRenderableWidget(new HoloButton(rx + rw - 16, top + 198, 16, 14, Component.literal("+"), b -> sendCloak(projector.cloak, projector.cloakDepth + 1)));
+        //Cloak field: walls rising from four wireless extensions in the corners, hiding everything between them.
+        int fw = rw / 2 - 2;
+        field = addRenderableWidget(new HoloButton(rx, top + 216, fw, 14, fieldLabel(), b -> sendField(!projector.cloakField, projector.fieldHeight)));
+        addRenderableWidget(new HoloButton(rx + fw + 4, top + 216, 14, 14, Component.literal("-"), b -> sendField(projector.cloakField, projector.fieldHeight - 1)));
+        addRenderableWidget(new HoloButton(rx + rw - 14, top + 216, 14, 14, Component.literal("+"), b -> sendField(projector.cloakField, projector.fieldHeight + 1)));
         setInitialFocus(search);
     }
 
@@ -138,7 +144,25 @@ public class ProjectorScreen extends HoloScreen
     private void sendCloak(boolean on, int depth)
     {
         int clamped = Math.clamp(depth, 1, GlassProjectorBlockEntity.MAX_CLOAK_DEPTH);
-        ClientPlayNetworking.send(new GlassNetworking.ConfigureCloak(projector.getBlockPos(), on, clamped));
+        ClientPlayNetworking.send(new GlassNetworking.ConfigureCloak(projector.getBlockPos(), on, clamped, projector.cloakField, projector.fieldHeight));
+    }
+
+    private Component fieldLabel()
+    {
+        return Component.translatable(projector.cloakField ? "glass.ui.fieldOn" : "glass.ui.fieldOff");
+    }
+
+    /** A field is a cloak too: switching it on switches cloak on. */
+    private void sendField(boolean on, int height)
+    {
+        if(on && !projector.hasFieldCorners())
+        {
+            warn(Component.translatable("glass.msg.fieldNeedsCorners"));
+            return;
+        }
+        clearWarning();
+        int clamped = Math.clamp(height, 1, GlassProjectorBlockEntity.MAX_FIELD_HEIGHT);
+        ClientPlayNetworking.send(new GlassNetworking.ConfigureCloak(projector.getBlockPos(), projector.cloak || on, projector.cloakDepth, on, clamped));
     }
 
     private void primaryAction()
@@ -215,6 +239,12 @@ public class ProjectorScreen extends HoloScreen
         Holo.label(g, font, Component.translatable("glass.ui.feed"), rx, top + 41);
         cloak.setMessage(cloakLabel());
         cloak.selected(projector.cloak);
+        field.setMessage(fieldLabel());
+        field.selected(projector.cloakField);
+        Component height = Component.translatable("glass.ui.fieldHeight", projector.fieldHeight);
+        int fw = rw / 2 - 2;
+        int hx = rx + fw + 18;
+        g.drawString(font, height, hx + (rw - fw - 32 - font.width(height)) / 2, top + 219, projector.cloakField ? Holo.TEXT : Holo.MUTED, false);
         Component depth = Component.translatable("glass.ui.cloakDepth", projector.cloakDepth);
         g.drawString(font, depth, rx + (rw - font.width(depth)) / 2, top + 201, projector.cloak ? Holo.TEXT : Holo.MUTED, false);
         if(projector.cloak)

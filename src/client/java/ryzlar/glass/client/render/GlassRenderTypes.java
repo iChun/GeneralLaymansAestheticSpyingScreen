@@ -98,6 +98,9 @@ public final class GlassRenderTypes
                 .withFragmentShader(Glass.id("core/glass_holo"))
                 .withSampler("Sampler0")
                 .withVertexFormat(DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS)
+                //A 1:1 projection lies right on top of real blocks (its floor on the real floor): pulled a hair towards
+                //the eye it wins where they meet, instead of the two flickering through each other.
+                .withDepthBias(-1.0F, -10.0F)
                 .withCull(true);
         if(define.equals("SOLID"))
         {
@@ -132,6 +135,53 @@ public final class GlassRenderTypes
     public static RenderType hologram(int look)
     {
         return look == 1 ? HOLOGRAM_BLUE : look == 2 ? HOLOGRAM_SOLID : HOLOGRAM;
+    }
+
+    /** The back of a screen and the inside of a cloak field: glowing edges, a nano grid close up, ripples (glass_back). */
+    public static final RenderPipeline BACK_PIPELINE = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET, RenderPipelines.GLOBALS_SNIPPET)
+            .withLocation(Glass.id("pipeline/glass_back"))
+            .withVertexShader(Glass.id("core/glass_back"))
+            .withFragmentShader(Glass.id("core/glass_back"))
+            .withVertexFormat(DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS)
+            .withBlend(com.mojang.blaze3d.pipeline.BlendFunction.TRANSLUCENT)
+            .withDepthWrite(false)
+            .withCull(false)
+            .build();
+    public static final RenderType BACK = RenderType.create("glass_back", 1536, false, true, BACK_PIPELINE,
+            RenderType.CompositeState.builder().createCompositeState(false));
+
+    /** A holo cube's scan: light and a grid running over the real room's faces, added on top (glass_scan). */
+    public static final RenderPipeline SCAN_PIPELINE = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET, RenderPipelines.GLOBALS_SNIPPET)
+            .withLocation(Glass.id("pipeline/glass_scan"))
+            .withVertexShader(Glass.id("core/glass_scan"))
+            .withFragmentShader(Glass.id("core/glass_scan"))
+            .withVertexFormat(DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS)
+            .withBlend(com.mojang.blaze3d.pipeline.BlendFunction.LIGHTNING)
+            .withDepthWrite(false)
+            .withDepthBias(-1.0F, -10.0F)
+            .withCull(true)
+            .build();
+    public static final RenderType SCAN = RenderType.create("glass_scan", 1536, false, false, SCAN_PIPELINE,
+            RenderType.CompositeState.builder().createCompositeState(false));
+
+    /** The dome round a holo cube's simulation, showing the scan's panorama (glass_dome). */
+    public static final RenderPipeline DOME_PIPELINE = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET, RenderPipelines.GLOBALS_SNIPPET)
+            .withLocation(Glass.id("pipeline/glass_dome"))
+            .withVertexShader(Glass.id("core/glass_dome"))
+            .withFragmentShader(Glass.id("core/glass_dome"))
+            .withSampler("Sampler0")
+            .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS)
+            .withBlend(com.mojang.blaze3d.pipeline.BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+    private static final Map<ResourceLocation, RenderType> DOMES = new HashMap<>();
+
+    public static RenderType dome(ResourceLocation panorama)
+    {
+        return DOMES.computeIfAbsent(panorama, tex -> RenderType.create("glass_dome", 1536, false, false, DOME_PIPELINE,
+                RenderType.CompositeState.builder()
+                        .setTextureState(new RenderStateShard.TextureStateShard(tex, false))
+                        .createCompositeState(false)));
     }
 
     private static final Map<ResourceLocation, RenderType> SCREENS = new HashMap<>();

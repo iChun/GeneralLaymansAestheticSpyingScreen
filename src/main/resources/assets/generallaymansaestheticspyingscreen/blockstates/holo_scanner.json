@@ -1,7 +1,7 @@
 {
   "variants": {
     "": {
-      "model": "minecraft:block/structure_block_save"
+      "model": "generallaymansaestheticspyingscreen:block/holo_scanner"
     }
   }
 }

@@ -87,6 +87,11 @@ public final class SpyViewRenderer
     private Vec3 mainCameraPosition;
     @Nullable
     private SectionOcclusionGraph mainGraph;
+    /** While a view renders: its projection, and the same without the clip plane (for the sky, see SkyRendererMixin). */
+    @Nullable
+    private GpuBufferSlice viewProjection;
+    @Nullable
+    private GpuBufferSlice skyProjection;
 
     private SpyViewRenderer() {}
 
@@ -158,6 +163,15 @@ public final class SpyViewRenderer
     public Vec3 mainCameraPosition()
     {
         return mainCameraPosition;
+    }
+
+    /** Called around sky and cloud drawing: during a view, switch to the projection without the clip plane and back. */
+    public void useSkyProjection(boolean sky)
+    {
+        if(rendering != null && viewProjection != null && skyProjection != null)
+        {
+            RenderSystem.setProjectionMatrix(sky ? skyProjection : viewProjection, ProjectionType.PERSPECTIVE);
+        }
     }
 
     public Vector4f currentFogColor()
@@ -329,7 +343,9 @@ public final class SpyViewRenderer
         view.fogColor = new Vector4f(fogColor);
         GpuBufferSlice fogBuffer = fogRenderer.getBuffer(FogRenderer.FogMode.WORLD);
 
-        RenderSystem.setProjectionMatrix(view.projection.getBuffer(projection), ProjectionType.PERSPECTIVE);
+        skyProjection = view.floorProjection.getBuffer(unclipped);
+        viewProjection = view.projection.getBuffer(projection);
+        RenderSystem.setProjectionMatrix(viewProjection, ProjectionType.PERSPECTIVE);
         levelRenderer.prepareCullFrustum(position, modelView, cullProjection);
 
         //Swap in this view's section visibility state.
@@ -380,6 +396,8 @@ public final class SpyViewRenderer
         {
             mc.smartCull = smartCull;
             rendering = null;
+            viewProjection = null;
+            skyProjection = null;
             targetOverride = null;
             mainCameraPosition = null;
 

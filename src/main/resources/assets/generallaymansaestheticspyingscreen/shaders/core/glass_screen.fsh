@@ -45,7 +45,11 @@ void main() {
     vec2 cell = floor(grid);
     vec2 centre = (cell + 0.5) / CELLS;
     float noise = hash(cell) - 0.5;
-    float reveal = radius - length(centre) + noise * SPILL * 2.0;
+    // How far this pixel is from where the wave starts. Vertex alpha picks the wave's shape: a sphere around the projector
+    // (screens), straight up from the ground (cloak field walls: the radius is how high they have risen), or everywhere
+    // at once (the field's roof, closing once the walls are up).
+    float distance = vertexColor.a > 0.75 ? length(centre) : (vertexColor.a > 0.25 ? centre.y : 0.5);
+    float reveal = radius - distance + noise * SPILL * 2.0;
     if (reveal < 0.0) {
 #ifdef WIPE
         if (vertexColor.b > 0.5) {

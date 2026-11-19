@@ -56,6 +56,7 @@ public final class HoloClient
 
     public static void init()
     {
+        Panoramas.init();
         ClientPlayNetworking.registerGlobalReceiver(HoloNetworking.ProjectionBlocks.TYPE, (payload, context) -> {
             BlockState[] palette = new BlockState[payload.palette().size()];
             for(int i = 0; i < palette.length; i++)
@@ -73,7 +74,6 @@ public final class HoloClient
 
         BlockEntityRenderers.register(GlassRegistry.HOLO_PROJECTOR_BE, HologramRenderer::new);
         net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(GlassRegistry.HOLO_DRONE_ENTITY, DroneRenderer::new);
-        HoloScanClient.init();
 
         ItemTooltipCallback.EVENT.register((stack, context, type, lines) -> {
             ProjectionRef ref = stack.get(GlassRegistry.PROJECTION);
@@ -101,7 +101,7 @@ public final class HoloClient
 
     public static void reset()
     {
-        HoloScanClient.reset();
+        Panoramas.reset();
         projections.clear();
         requested.clear();
         previewBox = null;

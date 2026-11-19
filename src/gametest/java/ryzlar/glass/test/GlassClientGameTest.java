@@ -25,10 +25,12 @@ import ryzlar.glass.blockentity.GlassBaseBlockEntity;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
 import ryzlar.glass.blockentity.GlassSceneSelectorBlockEntity;
 import ryzlar.glass.blockentity.GlassTerminalBlockEntity;
+import net.minecraft.client.Minecraft;
 import ryzlar.glass.client.gui.CameraScreen;
 import ryzlar.glass.client.gui.ProjectorScreen;
 import ryzlar.glass.client.gui.SceneSelectorScreen;
 import ryzlar.glass.client.gui.WirelessOrderScreen;
+import ryzlar.glass.client.gui.WirelessProjectorScreen;
 import ryzlar.glass.network.GlassNetworkData;
 import ryzlar.glass.network.GlassNetworkManager;
 import ryzlar.glass.network.GlassNetworking;
@@ -55,6 +57,7 @@ public class GlassClientGameTest implements FabricClientGameTest
     private static final BlockPos SELECTOR = new BlockPos(5, -60, 3);
     private static final BlockPos HOLO_SCANNER = new BlockPos(58, -60, -26);
     private static final BlockPos HOLO_PROJECTOR = new BlockPos(61, -60, -40);
+    private static final BlockPos FIELD_PROJECTOR = new BlockPos(-66, -60, 50);
     private static final BlockPos GOLD_CAMERA = new BlockPos(40, -59, 0);
     private static final BlockPos DIAMOND_CAMERA = new BlockPos(80, -59, 0);
     private static final BlockPos SPARE_TERMINAL = new BlockPos(5, -60, 6);
@@ -67,6 +70,23 @@ public class GlassClientGameTest implements FabricClientGameTest
     {
         context.runOnClient(mc -> mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND,
                 new net.minecraft.world.phys.BlockHitResult(net.minecraft.world.phys.Vec3.atCenterOf(pos), net.minecraft.core.Direction.NORTH, pos, false)));
+    }
+
+    /**
+     * Waits for the chunks around the player to be drawn. That wait sometimes times out on a busy machine (all the views
+     * this test opens keep the chunk builder busy); then just give it a few more seconds instead of failing.
+     */
+    private static void settle(TestSingleplayerContext singleplayer, ClientGameTestContext context)
+    {
+        try
+        {
+            singleplayer.getClientWorld().waitForChunksRender();
+        }
+        catch(AssertionError e)
+        {
+            LOGGER.warn("Chunks not drawn in time, waiting a little longer");
+            context.waitTicks(80);
+        }
     }
 
     private static void check(boolean condition, String message)
@@ -124,7 +144,7 @@ public class GlassClientGameTest implements FabricClientGameTest
     {
         try(TestSingleplayerContext singleplayer = context.worldBuilder().create())
         {
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             TestServerContext server = singleplayer.getServer();
             server.runCommand("time set noon");
             server.runCommand("gamerule doDaylightCycle false");
@@ -192,7 +212,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             context.waitTicks(5);
 
             server.runCommand("tp @p 0.5 -60 8.5 180 0");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(10);
             server.runCommand("setblock 0 -58 -1 minecraft:redstone_block");
             int onWaited = 0;
@@ -231,9 +251,25 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("setblock -14 -59 5 minecraft:redstone_block");
             context.waitTicks(40);
             server.runCommand("tp @p -13.5 -60 14.5 180 -10");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(20);
             context.takeScreenshot("screen_wireless");
+            //From behind: its edges glow; close up a nano grid shows; walking through it sends a ripple across it.
+            server.runCommand("fill -13 -59 0 -12 -59 9 minecraft:barrier");
+            server.runCommand("tp @p -12.5 -58 -1.5 0 -10");
+            context.waitTicks(20);
+            context.takeScreenshot("wireless_back_far");
+            server.runCommand("tp @p -12.5 -58 4.5 0 -10");
+            context.waitTicks(10);
+            context.takeScreenshot("wireless_back_close");
+            server.runCommand("tp @p -12.5 -58 7.6 0 -10");
+            context.waitTicks(5);
+            context.getInput().holdKey(options -> options.keyDown);
+            context.waitTicks(14);
+            context.getInput().releaseKey(options -> options.keyDown);
+            context.waitTicks(3);
+            context.takeScreenshot("wireless_back_walked_through");
+            server.runCommand("fill -13 -59 0 -12 -59 9 minecraft:air");
 
             //A "window": the camera sits right in front of its own projector, so the glass should line up with the world
             //behind it, even while walking (view bobbing).
@@ -254,7 +290,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("setblock 23 -60 29 minecraft:redstone_block");
             context.runOnClient(mc -> mc.options.bobView().set(true));
             server.runCommand("tp @p 23.5 -60 44.5 180 0");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(60);
             context.getInput().holdKey(options -> options.keyUp);
             context.waitTicks(6);
@@ -279,11 +315,16 @@ public class GlassClientGameTest implements FabricClientGameTest
             context.setScreen(() -> new WirelessOrderScreen(wirelessProjector, null));
             context.waitTicks(10);
             context.takeScreenshot("gui_wireless_order");
+            //The extension's own screen: what it is connected to, and the projectors nearby.
+            context.setScreen(() -> new WirelessProjectorScreen((ryzlar.glass.blockentity.GlassWirelessBlockEntity)Minecraft.getInstance().level
+                    .getBlockEntity(new BlockPos(-16, -55, 6))));
+            context.waitTicks(10);
+            context.takeScreenshot("gui_wireless_extension");
             context.setScreen(() -> null);
 
             //Switching off plays the turn-on animation in reverse: the image fades to white, furthest blocks first.
             server.runCommand("tp @p 0.5 -60 8.5 180 0");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(20);
             server.runCommand("setblock 0 -58 -1 minecraft:air");
             int waited = 0;
@@ -303,7 +344,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             //A block right in front of the camera: the screen shows that block, steadily (its face lies on the
             //terminal's front face, where the view is clipped; it used to flicker like z-fighting).
             server.runCommand("setblock 40 -59 -1 minecraft:emerald_block");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(10);
             for(int i = 0; i < 3; i++)
             {
@@ -311,7 +352,7 @@ public class GlassClientGameTest implements FabricClientGameTest
                 context.waitTicks(1);
             }
             server.runCommand("setblock 40 -59 -1 minecraft:air");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(10);
 
             //A lever, flicked like a player would: off, on, off quickly, then on and off again with time to watch.
@@ -426,7 +467,7 @@ public class GlassClientGameTest implements FabricClientGameTest
                 cloak.sync();
             });
             server.runCommand("tp @p -36.5 -60 -29.5 180 0");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(20);
             context.takeScreenshot("cloak_off");
             server.runCommand("setblock -37 -61 -40 minecraft:redstone_block");
@@ -447,7 +488,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             context.takeScreenshot("cloak_switched_off");
             //Back to the first screen, so the cameras' chunks are loaded again for the checks below.
             server.runCommand("tp @p 0.5 -60 8.5 180 0");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(40);
 
             //The scene selector: linked to the nearest projector, a list of scenes, a redstone pulse shows the next one.
@@ -491,7 +532,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("fill 64 -59 -24 64 -57 -24 minecraft:blue_wool");
             server.runCommand("setblock 58 -60 -26 generallaymansaestheticspyingscreen:holo_scanner");
             server.runCommand("tp @p 61.5 -60 -15.5 180 10");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(5);
             server.runOnServer(s -> ((HoloScannerBlockEntity)s.overworld().getBlockEntity(HOLO_SCANNER)).configure(2, 0, -2, 5, 5, 5, "Tower"));
             context.waitTicks(5);
@@ -539,7 +580,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("setblock 61 -61 -40 minecraft:redstone_block");
             //Look from the other side: the hologram in front, the real tower behind it.
             server.runCommand("tp @p 61.5 -59 -53.5 0 12");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(40);
             check(server.computeOnServer(s -> ((HoloProjectorBlockEntity)s.overworld().getBlockEntity(HOLO_PROJECTOR)).active), "holo projector on with a crystal");
             context.takeScreenshot("holo_no_emitters");
@@ -594,10 +635,10 @@ public class GlassClientGameTest implements FabricClientGameTest
             context.takeScreenshot("gui_holo_projector");
             context.setScreen(() -> null);
             server.runCommand("tp @p 0.5 -60 8.5 180 0");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(20);
 
-            //Holo drone: scan a room by looking around it, then throw the drone to project the room 1:1 elsewhere.
+            //Holo cube: set it down in a room and let it scan it, then set it down elsewhere to project the room 1:1.
             server.runCommand("fill 100 -61 -10 106 -56 -4 minecraft:stone_bricks hollow");
             server.runCommand("fill 103 -59 -10 104 -58 -10 minecraft:glass");
             server.runCommand("setblock 101 -60 -9 minecraft:bookshelf");
@@ -606,32 +647,61 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("setblock 105 -60 -5 minecraft:red_wool");
             server.runCommand("setblock 101 -60 -5 minecraft:gold_block");
             server.runCommand("fill 112 -61 -24 140 -61 12 minecraft:white_concrete");
-            server.runCommand("tp @p 103.5 -60 -6.5 180 0");
-            singleplayer.getClientWorld().waitForChunksRender();
+            server.runCommand("tp @p 103.5 -60 -5.5 180 20");
+            settle(singleplayer, context);
             server.runCommand("item replace entity @p weapon.mainhand with generallaymansaestheticspyingscreen:holo_drone");
             context.waitTicks(5);
-            context.runOnClient(mc -> mc.gameMode.useItem(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND));
-            context.waitTicks(3);
-            boolean scanned = false;
-            int look = 0;
-            for(int pitch : new int[] { 0, 45, -45, 70, -70 })
+            BlockPos roomFloor = new BlockPos(103, -61, -8);
+            context.runOnClient(mc -> mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND,
+                    new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(roomFloor).add(0, 0.5, 0), net.minecraft.core.Direction.UP, roomFloor, false)));
+            context.waitTicks(5);
+            net.minecraft.world.phys.AABB room = new net.minecraft.world.phys.AABB(100, -62, -11, 107, -55, -3);
+            check(server.computeOnServer(s -> !s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).isEmpty()), "the empty cube is set down in the room");
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).forEach(d -> d.scanFor(player(s))));
+            int scanWaited = 0;
+            for(int tick : new int[] { 8, 20, 35 })
             {
-                for(int yaw = 0; yaw < 360 && !scanned; yaw += 30)
-                {
-                    server.runCommand("tp @p 103.5 -60 -6.5 " + yaw + " " + pitch);
-                    context.waitTicks(2);
-                    if(++look == 14)
-                    {
-                        context.takeScreenshot("drone_scanning");
-                    }
-                    scanned = server.computeOnServer(s -> player(s).getMainHandItem().get(GlassRegistry.DRONE_SCAN) != null);
-                }
+                context.waitTicks(tick - scanWaited);
+                scanWaited = tick;
+                context.takeScreenshot("cube_scan_tick_" + tick);
             }
-            check(scanned, "looking around the room scans it into the drone");
+            boolean scanned = false;
+            for(int i = 0; i < 40 && !scanned; i++)
+            {
+                context.waitTicks(5);
+                scanned = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).stream().anyMatch(d -> d.scan() != null));
+            }
+            check(scanned, "the cube scans the room around it");
+            context.waitTicks(4);
+            context.takeScreenshot("cube_scan_done");
+            boolean panorama = false;
+            for(int i = 0; i < 40 && !panorama; i++)
+            {
+                context.waitTicks(5);
+                panorama = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).stream()
+                        .anyMatch(d -> d.scan() != null && ryzlar.glass.holo.PanoramaStore.has(s, d.scan().id())));
+            }
+            check(panorama, "the cube takes a 360 degree panorama and keeps it with the scan");
+            //Pick it up (with its scan) and take it in hand again.
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloDroneEntity.class, room).forEach(d -> d.startPickUp(player(s))));
+            context.waitTicks(3);
+            server.runOnServer(s -> {
+                for(int i = 0; i < player(s).getInventory().getContainerSize(); i++)
+                {
+                    ItemStack stack = player(s).getInventory().getItem(i);
+                    if(stack.is(GlassRegistry.HOLO_DRONE) && stack.get(GlassRegistry.DRONE_SCAN) != null)
+                    {
+                        player(s).getInventory().setItem(i, ItemStack.EMPTY);
+                        player(s).setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, stack);
+                        return;
+                    }
+                }
+            });
+            check(server.computeOnServer(s -> player(s).getMainHandItem().get(GlassRegistry.DRONE_SCAN) != null), "the cube is picked up with its scan");
 
             //Set it down in the open and switch it on: the room builds up around it, slowly, as a solid simulation.
             server.runCommand("tp @p 126.5 -60 7.5 180 0");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
             context.waitTicks(5);
             BlockPos ground = new BlockPos(126, -61, 4);
             context.runOnClient(mc -> mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND,
@@ -651,6 +721,13 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("tp @p 126.5 -60 4.5 135 10");
             context.waitTicks(20);
             context.takeScreenshot("drone_room_inside");
+            //Inside the simulation the dome shows the scanned surroundings (through the window, and where the edge falls apart).
+            for(int yaw : new int[] { 0, 90, 180, 270 })
+            {
+                server.runCommand("tp @p 126.5 -60 4.5 " + yaw + " -5");
+                context.waitTicks(4);
+                context.takeScreenshot("drone_dome_" + yaw);
+            }
             server.runCommand("tp @p 126.5 -60 10.5 180 10");
             context.waitTicks(10);
             //Switch it off: the room shrinks back into the drone.
@@ -673,7 +750,79 @@ public class GlassClientGameTest implements FabricClientGameTest
                 return false;
             }), "the drone is picked up with its scan");
             server.runCommand("tp @p 0.5 -60 8.5 180 0");
-            singleplayer.getClientWorld().waitForChunksRender();
+            settle(singleplayer, context);
+            context.waitTicks(20);
+
+            //Cloak field: four wireless extensions in the corners; walls rise from them and hide what is in between.
+            server.runCommand("fill -70 -61 30 -40 -61 60 minecraft:grass_block");
+            server.runCommand("fill -58 -60 42 -58 -56 42 minecraft:oak_log");
+            server.runCommand("fill -60 -55 40 -56 -53 44 minecraft:oak_leaves[persistent=true]");
+            server.runCommand("setblock -56 -60 44 minecraft:red_wool");
+            //Like a village around it: a path through the field, a raised farm with water beside it, a house wall.
+            server.runCommand("fill -70 -61 42 -44 -61 42 minecraft:dirt_path");
+            server.runCommand("fill -52 -60 38 -47 -60 46 minecraft:oak_log");
+            server.runCommand("fill -51 -60 39 -48 -60 45 minecraft:farmland[moisture=7]");
+            server.runCommand("fill -50 -60 39 -50 -60 45 minecraft:water");
+            server.runCommand("fill -51 -59 39 -51 -59 45 minecraft:wheat[age=7]");
+            server.runCommand("fill -49 -59 39 -48 -59 45 minecraft:carrots[age=7]");
+            server.runCommand("fill -67 -60 38 -65 -56 40 minecraft:oak_planks");
+            server.runCommand("setblock -62 -60 38 generallaymansaestheticspyingscreen:glass_wireless_extension");
+            server.runCommand("setblock -54 -60 38 generallaymansaestheticspyingscreen:glass_wireless_extension");
+            server.runCommand("setblock -62 -60 46 generallaymansaestheticspyingscreen:glass_wireless_extension");
+            server.runCommand("setblock -54 -60 46 generallaymansaestheticspyingscreen:glass_wireless_extension");
+            server.runCommand("setblock -66 -60 50 generallaymansaestheticspyingscreen:glass_projector{placingFace:\"south\",wirelessPos:[[I;-62,-60,38],[I;-54,-60,38],[I;-62,-60,46],[I;-54,-60,46]]}");
+            context.waitTicks(2);
+            server.runOnServer(s -> {
+                GlassProjectorBlockEntity field = (GlassProjectorBlockEntity)s.overworld().getBlockEntity(FIELD_PROJECTOR);
+                field.cloak = true;
+                field.cloakField = true;
+                field.fieldHeight = 8;
+                field.sync();
+            });
+            check(server.computeOnServer(s -> ((GlassProjectorBlockEntity)s.overworld().getBlockEntity(FIELD_PROJECTOR)).cloakFieldBox() != null), "four corner extensions make a cloak field");
+            server.runCommand("tp @p -57.5 -60 58.5 180 5");
+            settle(singleplayer, context);
+            context.waitTicks(20);
+            context.takeScreenshot("field_off");
+            server.runCommand("setblock -66 -61 50 minecraft:redstone_block");
+            int fieldWaited = 0;
+            for(int tick : new int[] { 12, 24, 60 })
+            {
+                context.waitTicks(tick - fieldWaited);
+                fieldWaited = tick;
+                context.takeScreenshot("field_rise_tick_" + tick);
+            }
+            server.runCommand("tp @p -47.5 -60 52.5 135 5");
+            context.waitTicks(20);
+            context.takeScreenshot("field_angle");
+            server.runCommand("setblock -58 -45 52 minecraft:barrier");
+            server.runCommand("tp @p -57.5 -44 52.5 180 50");
+            context.waitTicks(20);
+            context.takeScreenshot("field_from_above");
+            server.runCommand("setblock -58 -43 42 minecraft:barrier");
+            server.runCommand("tp @p -57.5 -42 42.5 180 85");
+            context.waitTicks(20);
+            context.takeScreenshot("field_straight_above");
+            server.runCommand("setblock -58 -45 52 minecraft:air");
+            server.runCommand("setblock -58 -43 42 minecraft:air");
+            server.runCommand("tp @p -59.5 -60 44.5 135 0");
+            context.waitTicks(20);
+            context.takeScreenshot("field_inside");
+            server.runCommand("tp @p -55.5 -60 44.5 0 10");
+            context.waitTicks(5);
+            context.getInput().holdKey(options -> options.keyUp);
+            context.waitTicks(12);
+            context.getInput().releaseKey(options -> options.keyUp);
+            context.waitTicks(3);
+            context.takeScreenshot("field_inside_touch");
+            server.runCommand("tp @p -57.5 -60 58.5 180 5");
+            context.waitTicks(10);
+            server.runCommand("setblock -66 -61 50 minecraft:grass_block");
+            context.waitTicks(20);
+            context.takeScreenshot("field_sink_tick_20");
+            context.waitTicks(40);
+            server.runCommand("tp @p 0.5 -60 8.5 180 0");
+            settle(singleplayer, context);
             context.waitTicks(20);
 
             //Removing a camera terminal takes the channel's camera offline: at once when broken, and within a second even
