@@ -1,12 +1,26 @@
 package ryzlar.glass.client.render;
 
+import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BlockModelPart;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -24,9 +38,17 @@ import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Matrix4f;
+import org.joml.Vector4f;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 /**
  * The ground of one side of a cloak, rebuilt from its surroundings ("content-aware fill").
@@ -40,7 +62,7 @@ import java.util.List;
  * <p>
  * The blocks are drawn by the game's own block renderer through a {@link Terrain} view of the world with the hidden part
  * replaced, so faces, smooth lighting and ambient occlusion come out like the real terrain around it. The result is
- * kept and replayed every frame, and rebuilt once a second (the world around it may change).
+ * kept and replayed every frame, and rebuilt when a block around it changes (and every ten seconds anyway).
  */
 public final class CloakFill
 {
@@ -63,9 +85,10 @@ public final class CloakFill
     private static final int SCAN = 12;
     /** The made-up ground stays this close to the height of the ground in front of the screen, in blocks. */
     private static final int MAX_RISE = 5;
-    private static final int REFRESH_TICKS = 20;
-    /** How far above the real ground the ground behind the hidden part is drawn again. */
-    private static final float RING_LIFT = 0.004F;
+    /** Rebuilt this often even if nothing near it changed, in ticks. */
+    private static final int REFRESH_TICKS = 200;
+    /** Rebuilt at most this often when blocks near it change, in ticks. */
+    private static final int MIN_REBUILD_TICKS = 10;
 
     /**
      * Where a cloak side is, in its own terms: {@code along} counts block rows from the screen's outer glass back into
@@ -108,10 +131,18 @@ public final class CloakFill
         }
     }
 
+    /** The fills in use, told when a block changes near them (see {@link #blockChanged}). */
+    private static final Set<CloakFill> LIVE = Collections.newSetFromMap(new WeakHashMap<>());
+
     private final Area area;
     /** How far beside the hidden part the world is drawn back in, as last built (at least the area's own). */
     private int spread;
     private long builtAt = Long.MIN_VALUE;
+    /** Everything the last build looked at (null: not built yet). A block changing in it makes the fill stale. */
+    @Nullable
+    private AABB looked;
+    /** A block changed in what the last build looked at. */
+    private boolean stale;
     private final Mesh fill = new Mesh();
     private final Mesh ring = new Mesh();
 
@@ -119,23 +150,50 @@ public final class CloakFill
     {
         this.area = area;
         this.spread = area.spread();
+        LIVE.add(this);
+    }
+
+    /** A block changed on the client: the fills that were built from it are rebuilt. */
+    public static void blockChanged(BlockPos pos)
+    {
+        if(LIVE.isEmpty())
+        {
+            return;
+        }
+        Vec3 centre = Vec3.atCenterOf(pos);
+        for(CloakFill fill : LIVE)
+        {
+            if(fill.looked != null && fill.looked.contains(centre))
+            {
+                fill.stale = true;
+            }
+        }
     }
 
     // ---- Drawing ----
 
-    /** Rebuilds the ground if it is a second old (or new). */
+    /**
+     * Rebuilds the ground when it is new, when a block changed in what it was built from (at most twice a second, so
+     * digging through it does not rebuild it every tick), when the eye has moved to see further sideways than was drawn,
+     * and every {@link #REFRESH_TICKS} anyway (chunks loading in around it, light changing).
+     */
     public void refresh(ClientLevel level)
     {
         long now = level.getGameTime();
         int wanted = wantedSpread(Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
-        //Rebuilt once a second, or at once when the eye has moved to see further sideways than was drawn.
-        if(builtAt != Long.MIN_VALUE && now - builtAt < REFRESH_TICKS && now >= builtAt && wanted <= spread)
+        if(builtAt != Long.MIN_VALUE && now >= builtAt)
         {
-            return;
+            long age = now - builtAt;
+            boolean due = age >= REFRESH_TICKS || wanted > spread || stale && age >= MIN_REBUILD_TICKS;
+            if(!due)
+            {
+                return;
+            }
         }
-        //Later rebuilds of a cloak's sides are spread over the second instead of all landing on the same frame.
-        builtAt = builtAt == Long.MIN_VALUE ? now - area.side().ordinal() * 3L % REFRESH_TICKS : now;
+        //Later rebuilds of a cloak's sides are spread out instead of all landing on the same frame.
+        builtAt = builtAt == Long.MIN_VALUE ? now - area.side().ordinal() * 7L % REFRESH_TICKS : now;
         spread = wanted;
+        stale = false;
         build(level);
     }
 
@@ -183,15 +241,18 @@ public final class CloakFill
     }
 
     /** The ground under and beside the hidden part (drawn without the clip plane, over a cleared depth buffer). */
-    public void drawFill(VertexConsumer consumer, Vec3 camera)
+    public void drawFill(Vec3 camera)
     {
-        fill.replay(consumer, camera, 0F);
+        fill.draw(GlassRenderTypes.CLOAK_GROUND, GlassRenderTypes.CLOAK_GROUND_PIPELINE, camera);
     }
 
-    /** The ground just behind the hidden part (drawn with the view's own depth, a hair above the real ground). */
-    public void drawRing(VertexConsumer consumer, Vec3 camera)
+    /**
+     * The ground just behind the hidden part (drawn with the view's own depth, over the real ground at the same height:
+     * its render type pulls it towards the camera in depth).
+     */
+    public void drawRing(Vec3 camera)
     {
-        ring.replay(consumer, camera, RING_LIFT);
+        ring.draw(GlassRenderTypes.CLOAK_RING, GlassRenderTypes.CLOAK_RING_PIPELINE, camera);
     }
 
     // ---- Building ----
@@ -303,6 +364,13 @@ public final class CloakFill
         int top = aboveHidden + ABOVE;
         int lowest = area.groundY() - SCAN;
         int lastFillRow = area.depth() + area.after();
+        //What this build looks at: every column it draws or samples, from below the lowest ground it scans to above the
+        //sky light it reads (one more all round: a block's faces and light depend on its neighbours).
+        int reach = Math.max(spread, SAMPLE) + 1;
+        BlockPos near = area.column(-Math.max(area.before(), SAMPLE) - 1, area.minAcross() - reach, area.groundY() - SCAN - 1);
+        BlockPos far = area.column(Math.max(lastFillRow + area.ring(), area.depth() + SAMPLE) + 1, area.maxAcross() + reach,
+                Math.max(top, area.groundY() + SCAN) + Terrain.SKY_SCAN + 1);
+        looked = AABB.encapsulatingFullBlocks(near, far);
         for(int along = -area.before(); along < lastFillRow + area.ring(); along++)
         {
             boolean behind = along >= lastFillRow;
@@ -382,6 +450,8 @@ public final class CloakFill
                 }
             }
         }
+        fill.upload();
+        ring.upload();
     }
 
     /** Draws blocks of the {@link Terrain} into a mesh: their models, and their water or lava. */
@@ -563,19 +633,81 @@ public final class CloakFill
     /** The world as the block renderer sees it here: the hidden part swapped for the made-up ground. */
     private static final class Terrain implements BlockAndTintGetter
     {
+        /** How far up from the top of the hidden part a column's sky light is looked for (past a log or a roof slab). */
+        static final int SKY_SCAN = 6;
+
         private final ClientLevel level;
         private final Area area;
         private final Long2ObjectOpenHashMap<Column> made;
+        private final int hiddenTop;
         private final int outsideBlockLight;
         private final int outsideSkyLight;
+        /** Sky light just above the hidden part, per column (-1: not looked up yet). */
+        private final Long2IntOpenHashMap skyAbove = new Long2IntOpenHashMap();
 
         Terrain(ClientLevel level, Area area, Long2ObjectOpenHashMap<Column> made)
         {
             this.level = level;
             this.area = area;
             this.made = made;
-            this.outsideBlockLight = level.getBrightness(LightLayer.BLOCK, area.lightPos());
-            this.outsideSkyLight = level.getBrightness(LightLayer.SKY, area.lightPos());
+            this.hiddenTop = (int)Math.ceil(area.hidden().maxY);
+            this.skyAbove.defaultReturnValue(-1);
+            //The light just outside the cloak. On a slope the spot in front of the screen's foot can be inside the hill
+            //(no light at all, and everything lit by it came out black): go up to the first block light passes through.
+            BlockPos.MutableBlockPos pos = area.lightPos().mutable();
+            for(int i = 0; i < SCAN && level.getBlockState(pos).isSolidRender(); i++)
+            {
+                pos.move(Direction.UP);
+            }
+            this.outsideBlockLight = level.getBrightness(LightLayer.BLOCK, pos);
+            this.outsideSkyLight = level.getBrightness(LightLayer.SKY, pos);
+        }
+
+        /**
+         * The light in a spot of the hidden part, which in the real world may be inside the hidden blocks (no light).
+         * Sky light comes from right above the hidden part in the same column (open sky, or the shade of a tree); if
+         * something solid stands on it there, from just outside the cloak. Block light from the real world next to it
+         * outside the hidden part (a torch beside it), or from just outside the cloak.
+         */
+        private int hiddenLight(LightLayer layer, BlockPos pos)
+        {
+            int real = level.getBrightness(layer, pos);
+            if(real >= 15)
+            {
+                return real;
+            }
+            if(layer == LightLayer.SKY)
+            {
+                int above = skyAbove(pos);
+                return Math.max(real, above > 0 ? above : outsideSkyLight);
+            }
+            int light = Math.max(real, outsideBlockLight);
+            for(Direction direction : Direction.Plane.HORIZONTAL)
+            {
+                BlockPos next = pos.relative(direction);
+                if(!area.hidden().contains(Vec3.atCenterOf(next)))
+                {
+                    light = Math.max(light, level.getBrightness(LightLayer.BLOCK, next) - 1);
+                }
+            }
+            return light;
+        }
+
+        private int skyAbove(BlockPos pos)
+        {
+            long key = columnKey(pos);
+            int light = skyAbove.get(key);
+            if(light < 0)
+            {
+                light = 0;
+                BlockPos.MutableBlockPos above = new BlockPos.MutableBlockPos();
+                for(int y = hiddenTop; y < hiddenTop + SKY_SCAN && light == 0; y++)
+                {
+                    light = level.getBrightness(LightLayer.SKY, above.set(pos.getX(), y, pos.getZ()));
+                }
+                skyAbove.put(key, light);
+            }
+            return light;
         }
 
         @Override
@@ -618,15 +750,14 @@ public final class CloakFill
             return null;
         }
 
-        /** Where the hidden blocks were, the light just outside the cloak (they made it dark there). */
+        /** Where the hidden blocks were, the light they kept out (see {@link #hiddenLight}). */
         @Override
         public int getBrightness(LightLayer layer, BlockPos pos)
         {
             Column column = made.get(columnKey(pos));
             if(column != null && pos.getY() > column.height() || area.hidden().contains(Vec3.atCenterOf(pos)))
             {
-                int outside = layer == LightLayer.SKY ? outsideSkyLight : outsideBlockLight;
-                return Math.max(outside, level.getBrightness(layer, pos));
+                return hiddenLight(layer, pos);
             }
             return level.getBrightness(layer, pos);
         }
@@ -668,14 +799,136 @@ public final class CloakFill
         }
     }
 
-    /** Vertices kept from the block renderer (relative to an origin block), replayed every frame. */
+    /**
+     * Vertices kept from the block renderer (relative to an origin block). Once built they go to the graphics card in one
+     * buffer, which is drawn every frame as it is (sending every vertex again each frame cost as much as building it).
+     */
     private static final class Mesh implements VertexConsumer
     {
+        /**
+         * Every mesh's buffer on the graphics card, with its mesh. A fill is dropped with its screen, without being told:
+         * the buffers of meshes that are gone are freed the next time any mesh uploads or draws.
+         */
+        private static final List<Uploaded> UPLOADED = new ArrayList<>();
+
+        private record Uploaded(WeakReference<Mesh> mesh, GpuBuffer buffer) {}
+
         private final FloatArrayList floats = new FloatArrayList(); //x, y, z, u, v
         private final IntArrayList ints = new IntArrayList(); //colour, light
         BlockPos origin = BlockPos.ZERO;
         private BlockPos replayOrigin = BlockPos.ZERO;
         private float offsetX, offsetY, offsetZ;
+        @Nullable
+        private GpuBuffer buffer;
+        private BlockPos bufferOrigin = BlockPos.ZERO;
+        private int indexCount;
+
+        /** Sends the vertices built to the graphics card (replacing what was there), and lets go of them here. */
+        void upload()
+        {
+            freeGone();
+            release();
+            int vertices = ints.size() / 2;
+            if(vertices >= 4)
+            {
+                VertexFormat format = DefaultVertexFormat.POSITION_COLOR_TEX_LIGHTMAP;
+                try(ByteBufferBuilder bytes = new ByteBufferBuilder(vertices * format.getVertexSize()))
+                {
+                    BufferBuilder builder = new BufferBuilder(bytes, VertexFormat.Mode.QUADS, format);
+                    for(int v = 0, f = 0, i = 0; v < vertices; v++, f += 5, i += 2)
+                    {
+                        builder.addVertex(floats.getFloat(f), floats.getFloat(f + 1), floats.getFloat(f + 2))
+                                .setColor(ints.getInt(i))
+                                .setUv(floats.getFloat(f + 3), floats.getFloat(f + 4))
+                                .setLight(ints.getInt(i + 1));
+                    }
+                    try(MeshData data = builder.build())
+                    {
+                        if(data != null)
+                        {
+                            buffer = RenderSystem.getDevice().createBuffer(() -> "GLASS cloak ground", GpuBuffer.USAGE_VERTEX, data.vertexBuffer());
+                            indexCount = data.drawState().indexCount();
+                            bufferOrigin = replayOrigin;
+                            UPLOADED.add(new Uploaded(new WeakReference<>(this), buffer));
+                        }
+                    }
+                }
+            }
+            clear();
+            floats.trim();
+            ints.trim();
+        }
+
+        private void release()
+        {
+            if(buffer != null)
+            {
+                GpuBuffer old = buffer;
+                UPLOADED.removeIf(u -> u.buffer() == old);
+                old.close();
+                buffer = null;
+                indexCount = 0;
+            }
+        }
+
+        private static void freeGone()
+        {
+            UPLOADED.removeIf(u ->
+            {
+                if(u.mesh().get() == null)
+                {
+                    u.buffer().close();
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        /** Draws the uploaded buffer with a render type's state into the target being drawn (the view's). */
+        void draw(RenderType type, RenderPipeline pipeline, Vec3 camera)
+        {
+            freeGone();
+            if(buffer == null || indexCount == 0)
+            {
+                return;
+            }
+            Matrix4f modelView = new Matrix4f(RenderSystem.getModelViewMatrix()).translate(
+                    (float)(bufferOrigin.getX() - camera.x), (float)(bufferOrigin.getY() - camera.y), (float)(bufferOrigin.getZ() - camera.z));
+            type.setupRenderState();
+            try
+            {
+                GpuBufferSlice transforms = RenderSystem.getDynamicUniforms().writeTransform(modelView, new Vector4f(1F, 1F, 1F, 1F),
+                        RenderSystem.getModelOffset(), RenderSystem.getTextureMatrix(), RenderSystem.getShaderLineWidth());
+                RenderSystem.AutoStorageIndexBuffer indices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
+                GpuBuffer indexBuffer = indices.getBuffer(indexCount);
+                RenderTarget target = Minecraft.getInstance().getMainRenderTarget();
+                GpuTextureView colour = RenderSystem.outputColorTextureOverride != null ? RenderSystem.outputColorTextureOverride : target.getColorTextureView();
+                GpuTextureView depth = !target.useDepth ? null
+                        : RenderSystem.outputDepthTextureOverride != null ? RenderSystem.outputDepthTextureOverride : target.getDepthTextureView();
+                try(RenderPass pass = RenderSystem.getDevice().createCommandEncoder()
+                        .createRenderPass(() -> "GLASS cloak ground", colour, OptionalInt.empty(), depth, OptionalDouble.empty()))
+                {
+                    pass.setPipeline(pipeline);
+                    RenderSystem.bindDefaultUniforms(pass);
+                    pass.setUniform("DynamicTransforms", transforms);
+                    pass.setVertexBuffer(0, buffer);
+                    for(int i = 0; i < 12; i++)
+                    {
+                        GpuTextureView texture = RenderSystem.getShaderTexture(i);
+                        if(texture != null)
+                        {
+                            pass.bindSampler("Sampler" + i, texture);
+                        }
+                    }
+                    pass.setIndexBuffer(indexBuffer, indices.type());
+                    pass.drawIndexed(0, 0, indexCount, 1);
+                }
+            }
+            finally
+            {
+                type.clearRenderState();
+            }
+        }
 
         /** Moves the vertices that follow (the liquid renderer works relative to a section). */
         void offset(float x, float y, float z)
@@ -689,20 +942,6 @@ public final class CloakFill
         {
             floats.clear();
             ints.clear();
-        }
-
-        void replay(VertexConsumer consumer, Vec3 camera, float lift)
-        {
-            float ox = (float)(replayOrigin.getX() - camera.x);
-            float oy = (float)(replayOrigin.getY() - camera.y) + lift;
-            float oz = (float)(replayOrigin.getZ() - camera.z);
-            for(int v = 0, f = 0, i = 0; v < ints.size() / 2; v++, f += 5, i += 2)
-            {
-                consumer.addVertex(floats.getFloat(f) + ox, floats.getFloat(f + 1) + oy, floats.getFloat(f + 2) + oz)
-                        .setColor(ints.getInt(i))
-                        .setUv(floats.getFloat(f + 3), floats.getFloat(f + 4))
-                        .setLight(ints.getInt(i + 1));
-            }
         }
 
         @Override

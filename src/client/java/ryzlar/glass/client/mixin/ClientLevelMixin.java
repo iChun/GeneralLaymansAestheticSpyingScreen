@@ -1,12 +1,16 @@
 package ryzlar.glass.client.mixin;
 
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.LevelTimeAccess;
+import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import ryzlar.glass.client.holo.SimulatedSky;
+import ryzlar.glass.client.render.CloakFill;
 
 /**
  * Inside a holo cube's simulation, the world is lit as bright as it was where (and when) the room was scanned, and the
@@ -22,6 +26,13 @@ public abstract class ClientLevelMixin implements LevelTimeAccess
     private void glass$simulatedDaylight(float partialTick, CallbackInfoReturnable<Float> cir)
     {
         cir.setReturnValue(SimulatedSky.skyDarken(cir.getReturnValueF()));
+    }
+
+    /** A cloak's ground is built from the blocks around it: when one changes, it is built again. */
+    @Inject(method = "sendBlockUpdated", at = @At("HEAD"))
+    private void glass$blockChanged(BlockPos pos, BlockState oldState, BlockState newState, int flags, CallbackInfo ci)
+    {
+        CloakFill.blockChanged(pos);
     }
 
     @Override

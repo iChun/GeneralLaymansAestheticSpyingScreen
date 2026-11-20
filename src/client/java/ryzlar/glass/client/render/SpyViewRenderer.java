@@ -21,7 +21,6 @@ import net.minecraft.client.renderer.fog.FogRenderer;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.resources.ResourceLocation;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.BlockModelPart;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
@@ -40,6 +39,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import ryzlar.glass.Glass;
+import ryzlar.glass.GlassConfig;
 import ryzlar.glass.client.TerminalPlacement;
 import ryzlar.glass.client.mixin.GameRendererAccessor;
 import ryzlar.glass.client.mixin.LevelRendererAccessor;
@@ -305,18 +305,22 @@ public final class SpyViewRenderer
             return;
         }
 
-        //Offscreen target, the same size as the screen so screen-space sampling lines up.
+        //Offscreen target with the screen's shape, so screen-space sampling lines up. A cloak's views are drawn smaller
+        //(each side seen draws the world again): the glass samples them by screen position, so they only get softer.
         RenderTarget main = mc.getMainRenderTarget();
+        float scale = view.placement != null && view.placement.cullRender() ? Math.clamp(GlassConfig.get().cloakViewScale, 0.25F, 1F) : 1F;
+        int width = Math.max(1, Math.round(main.width * scale));
+        int height = Math.max(1, Math.round(main.height * scale));
         if(view.target == null)
         {
-            view.target = new TextureTarget("GLASS view " + view.channel, main.width, main.height, true);
+            view.target = new TextureTarget("GLASS view " + view.channel, width, height, true);
             view.target.setFilterMode(FilterMode.LINEAR);
             view.texture.set(view.target);
             mc.getTextureManager().register(view.textureId, view.texture);
         }
-        else if(view.target.width != main.width || view.target.height != main.height)
+        else if(view.target.width != width || view.target.height != height)
         {
-            view.target.resize(main.width, main.height);
+            view.target.resize(width, height);
             view.target.setFilterMode(FilterMode.LINEAR);
             view.texture.set(view.target);
         }
@@ -473,15 +477,12 @@ public final class SpyViewRenderer
         stack.mul(modelView);
         try
         {
-            MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
             RenderSystem.setProjectionMatrix(view.projection.getBuffer(clipped), ProjectionType.PERSPECTIVE);
-            fill.drawRing(buffers.getBuffer(GlassRenderTypes.CLOAK_GROUND), camera);
-            buffers.endBatch(GlassRenderTypes.CLOAK_GROUND);
+            fill.drawRing(camera);
 
             RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(view.target.getDepthTexture(), 1.0D);
             RenderSystem.setProjectionMatrix(view.floorProjection.getBuffer(unclipped), ProjectionType.PERSPECTIVE);
-            fill.drawFill(buffers.getBuffer(GlassRenderTypes.CLOAK_GROUND), camera);
-            buffers.endBatch(GlassRenderTypes.CLOAK_GROUND);
+            fill.drawFill(camera);
         }
         finally
         {

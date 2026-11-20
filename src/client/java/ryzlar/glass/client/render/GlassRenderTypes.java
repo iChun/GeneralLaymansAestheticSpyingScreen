@@ -85,6 +85,26 @@ public final class GlassRenderTypes
                     .setTextureState(new RenderStateShard.TextureStateShard(TextureAtlas.LOCATION_BLOCKS, true))
                     .setLightmapState(RenderStateShard.LIGHTMAP)
                     .createCompositeState(false));
+    /**
+     * Cloak ground just behind the hidden part: drawn over the real ground at the same height, so it is pulled towards
+     * the camera in depth instead of lifted (with the view's far plane pushed far out, a fixed lift was smaller than the
+     * depth buffer's steps a few dozen blocks away, and the two grounds flickered through each other).
+     */
+    public static final RenderPipeline CLOAK_RING_PIPELINE = RenderPipeline.builder(RenderPipelines.TEXT_SNIPPET, RenderPipelines.FOG_SNIPPET)
+            .withLocation(Glass.id("pipeline/glass_cloak_ring"))
+            .withVertexShader(Glass.id("core/glass_ground"))
+            .withFragmentShader(Glass.id("core/glass_ground"))
+            .withShaderDefine("ALPHA_CUTOUT", 0.5F)
+            .withSampler("Sampler0")
+            .withSampler("Sampler2")
+            .withCull(true)
+            .withDepthBias(-1.0F, -10.0F)
+            .build();
+    public static final RenderType CLOAK_RING = RenderType.create("glass_cloak_ring", 1536, false, false, CLOAK_RING_PIPELINE,
+            RenderType.CompositeState.builder()
+                    .setTextureState(new RenderStateShard.TextureStateShard(TextureAtlas.LOCATION_BLOCKS, true))
+                    .setLightmapState(RenderStateShard.LIGHTMAP)
+                    .createCompositeState(false));
 
     /**
      * Holograms, with the nano wave: glowing, see-through block textures sorted back to front (BLUE: in cyan only), or
