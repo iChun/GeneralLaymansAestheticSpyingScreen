@@ -274,13 +274,20 @@ public final class GlassNetworking
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> GlassNetworkManager.onServerStopped());
     }
 
+    /** Answers a channel action; when it worked, every player gets the channels again (names, owners, access changed). */
     public static void reply(ServerPlayer player, GlassNetworkManager.Result result)
     {
-        ServerPlayNetworking.send(player, new ActionResult(result.ok(), result.message(), result.arg()));
+        tell(player, result);
         if(result.ok())
         {
             GlassNetworkManager.syncAll(player.level().getServer());
         }
+    }
+
+    /** Answers an action that does not change any channel (so nobody needs the channels again). */
+    public static void tell(ServerPlayer player, GlassNetworkManager.Result result)
+    {
+        ServerPlayNetworking.send(player, new ActionResult(result.ok(), result.message(), result.arg()));
     }
 
     private static boolean canReach(ServerPlayer player, BlockPos pos)
@@ -336,12 +343,12 @@ public final class GlassNetworking
         GlassNetworkData.Channel channel = data.channels.get(payload.channelId());
         if(!payload.channelId().isEmpty() && (channel == null || !channel.hasAccess(player.getUUID())))
         {
-            reply(player, GlassNetworkManager.Result.fail("glass.msg.noAccess"));
+            tell(player, GlassNetworkManager.Result.fail("glass.msg.noAccess"));
             return;
         }
         //Switching while the projector is on is fine: the screen stays up and the new feed wipes over the old one.
         showChannel(projector, data, payload.channelId(), channel == null ? "" : channel.name);
-        reply(player, GlassNetworkManager.Result.ok("glass.msg.projectorSet", projector.channelName));
+        tell(player, GlassNetworkManager.Result.ok("glass.msg.projectorSet", projector.channelName));
     }
 
     /** Points a projector at a channel (leaving cloak mode). An empty id clears it, which switches the screen off. */
@@ -367,22 +374,22 @@ public final class GlassNetworking
         }
         switch(SelectorOp.values()[payload.op()])
         {
-            case LINK -> reply(player, selector.linkNearest()
+            case LINK -> tell(player, selector.linkNearest()
                     ? GlassNetworkManager.Result.ok("glass.msg.selectorLinked", "")
                     : GlassNetworkManager.Result.fail("glass.msg.noProjectorNear"));
             case ADD -> {
                 GlassNetworkData.Channel channel = GlassNetworkManager.data(level.getServer()).channels.get(payload.channelId());
                 if(channel == null || !channel.hasAccess(player.getUUID()))
                 {
-                    reply(player, GlassNetworkManager.Result.fail("glass.msg.noAccess"));
+                    tell(player, GlassNetworkManager.Result.fail("glass.msg.noAccess"));
                 }
                 else if(!selector.addScene(channel.id, channel.name))
                 {
-                    reply(player, GlassNetworkManager.Result.fail("glass.msg.sceneNotAdded"));
+                    tell(player, GlassNetworkManager.Result.fail("glass.msg.sceneNotAdded"));
                 }
                 else
                 {
-                    reply(player, GlassNetworkManager.Result.ok("glass.msg.sceneAdded", channel.name));
+                    tell(player, GlassNetworkManager.Result.ok("glass.msg.sceneAdded", channel.name));
                 }
             }
             case REMOVE -> selector.removeScene(payload.index());
@@ -391,7 +398,7 @@ public final class GlassNetworking
             case SHOW -> {
                 if(!selector.showScene(payload.index()))
                 {
-                    reply(player, GlassNetworkManager.Result.fail(selector.projector() == null ? "glass.msg.selectorNoProjector" : "glass.msg.sceneGone"));
+                    tell(player, GlassNetworkManager.Result.fail(selector.projector() == null ? "glass.msg.selectorNoProjector" : "glass.msg.sceneGone"));
                 }
             }
         }
@@ -418,21 +425,49 @@ public final class GlassNetworking
 
     private static void handleSetProjector(ServerPlayer player, SetProjector payload)
     {
+        if(canReach(player, payload.wirelessPos()))
+        {
+            GlassNetworkManager.Result result = linkWireless(player, payload.wirelessPos(), payload.projectorPos());
+            if(result != null)
+            {
+                tell(player, result);
+            }
+        }
+    }
+
+    /**
+     * Links the wireless extension at {@code wirelessPos} to a projector: only one within {@link
+     * GlassProjectorBlockEntity#WIRELESS_RANGE} blocks, and (when it shows a channel) only if the player may see that
+     * channel, or anyone could put someone else's protected channel on their own glass. Null when there is nothing to
+     * say (no such blocks, or already linked).
+     */
+    @org.jetbrains.annotations.Nullable
+    public static GlassNetworkManager.Result linkWireless(ServerPlayer player, BlockPos wirelessPos, BlockPos projectorPos)
+    {
         ServerLevel level = player.level();
-        if(!canReach(player, payload.wirelessPos()) || !level.isLoaded(payload.projectorPos()))
+        if(!level.isLoaded(wirelessPos) || !level.isLoaded(projectorPos)
+                || !(level.getBlockEntity(wirelessPos) instanceof GlassWirelessBlockEntity)
+                || !(level.getBlockEntity(projectorPos) instanceof GlassProjectorBlockEntity projector)
+                || projector.wirelessPos.contains(wirelessPos)
+                || projector.wirelessPos.size() >= GlassProjectorBlockEntity.MAX_WIRELESS)
         {
-            return;
+            return null;
         }
-        if(level.getBlockEntity(payload.wirelessPos()) instanceof GlassWirelessBlockEntity
-                && level.getBlockEntity(payload.projectorPos()) instanceof GlassProjectorBlockEntity projector
-                && !projector.active
-                && !projector.wirelessPos.contains(payload.wirelessPos())
-                && projector.wirelessPos.size() < GlassProjectorBlockEntity.MAX_WIRELESS)
+        if(!GlassProjectorBlockEntity.inWirelessRange(projectorPos, wirelessPos))
         {
-            projector.wirelessPos.add(payload.wirelessPos());
-            projector.sync();
-            reply(player, GlassNetworkManager.Result.ok("glass.msg.wirelessLinked", ""));
+            return GlassNetworkManager.Result.fail("glass.msg.wirelessTooFar", Integer.toString(GlassProjectorBlockEntity.WIRELESS_RANGE));
         }
+        if(!projector.channelId.isEmpty() && !GlassNetworkManager.hasAccess(player, projector.channelId))
+        {
+            return GlassNetworkManager.Result.fail("glass.msg.noAccess");
+        }
+        if(projector.active)
+        {
+            return GlassNetworkManager.Result.fail("glass.msg.switchOffFirst");
+        }
+        projector.wirelessPos.add(wirelessPos.immutable());
+        projector.sync();
+        return GlassNetworkManager.Result.ok("glass.msg.wirelessLinked", "");
     }
 
     private static void handleUnlinkWireless(ServerPlayer player, UnlinkWireless payload)
@@ -447,12 +482,12 @@ public final class GlassNetworking
             //Like reordering: the screen's shape is fixed while it is on.
             if(projector.active)
             {
-                reply(player, GlassNetworkManager.Result.fail("glass.msg.switchOffFirst"));
+                tell(player, GlassNetworkManager.Result.fail("glass.msg.switchOffFirst"));
                 return;
             }
             projector.wirelessPos.remove(payload.wirelessPos());
             projector.sync();
-            reply(player, GlassNetworkManager.Result.ok("glass.msg.wirelessUnlinked", ""));
+            tell(player, GlassNetworkManager.Result.ok("glass.msg.wirelessUnlinked", ""));
         }
     }
 
@@ -476,7 +511,7 @@ public final class GlassNetworking
             }
             projector.wirelessPos = order;
             projector.sync();
-            reply(player, GlassNetworkManager.Result.ok("glass.msg.wirelessOrdered", ""));
+            tell(player, GlassNetworkManager.Result.ok("glass.msg.wirelessOrdered", ""));
         }
     }
 }

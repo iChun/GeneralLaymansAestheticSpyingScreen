@@ -27,6 +27,8 @@ import java.util.Objects;
 public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
 {
     public static final int MAX_WIRELESS = 64;
+    /** How far (blocks, each way) a wireless extension may be from the projector it is linked to. */
+    public static final int WIRELESS_RANGE = 64;
     private static final int RESOLVE_INTERVAL = 20;
 
     public boolean powered;
@@ -152,6 +154,12 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
             }
         }
         return new int[] { minX, y, minZ, maxX, maxZ };
+    }
+
+    public static boolean inWirelessRange(BlockPos projector, BlockPos wireless)
+    {
+        return Math.abs(projector.getX() - wireless.getX()) <= WIRELESS_RANGE && Math.abs(projector.getY() - wireless.getY()) <= WIRELESS_RANGE
+                && Math.abs(projector.getZ() - wireless.getZ()) <= WIRELESS_RANGE;
     }
 
     /** The limits this projector's cloak has, with the amplifiers next to it now. */

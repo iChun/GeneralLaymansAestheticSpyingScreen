@@ -120,6 +120,12 @@ public final class SpyViewRenderer
     private static final int RELEASE_AFTER_FRAMES = 200;
 
     private final Map<String, SpyView> views = new HashMap<>();
+
+    /** How many views (each with its own image on the graphics card) are kept now; tests check none are left behind. */
+    public int viewCount()
+    {
+        return views.size();
+    }
     private long frame;
     private int nextViewId;
 

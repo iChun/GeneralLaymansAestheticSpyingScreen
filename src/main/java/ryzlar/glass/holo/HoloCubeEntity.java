@@ -347,7 +347,7 @@ public class HoloCubeEntity extends Entity
         level().playSound(null, getX(), getY(), getZ(), ryzlar.glass.GlassSounds.SCAN_COMPLETE, SoundSource.NEUTRAL, 0.9F, 1F);
         if(scanner != null && serverLevel.getPlayerByUUID(scanner) instanceof ServerPlayer player)
         {
-            GlassNetworking.reply(player, GlassNetworkManager.Result.ok("glass.msg.roomScanned", ""));
+            GlassNetworking.tell(player, GlassNetworkManager.Result.ok("glass.msg.roomScanned", ""));
         }
     }
 
@@ -386,6 +386,10 @@ public class HoloCubeEntity extends Entity
     /** Gives the cube (with its scan) to the player, or the nearest one, or drops it. */
     private void pickUp(@Nullable Player player)
     {
+        if(isRemoved())
+        {
+            return; //already picked up this tick (hit and used at once): never hand it out twice
+        }
         ItemStack item = entityData.get(ITEM).copy();
         Player to = player != null ? player : level().getNearestPlayer(this, 16D);
         if(to == null || !to.addItem(item))

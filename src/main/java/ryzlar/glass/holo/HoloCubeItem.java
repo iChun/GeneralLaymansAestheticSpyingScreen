@@ -58,13 +58,16 @@ public class HoloCubeItem extends Item
             return InteractionResult.SUCCESS;
         }
         ItemStack stack = player.getItemInHand(hand);
-        if(stack.get(GlassRegistry.CUBE_SCAN) != null && player.isSecondaryUseActive())
+        CubeScan scan = stack.get(GlassRegistry.CUBE_SCAN);
+        if(scan != null && player.isSecondaryUseActive())
         {
+            //The scan's blocks are forgotten too (a creative copy of this cube loses them as well).
             stack.remove(GlassRegistry.CUBE_SCAN);
-            GlassNetworking.reply(serverPlayer, GlassNetworkManager.Result.ok("glass.msg.scanWiped", ""));
+            HoloProjectionData.remove(serverPlayer.level().getServer(), scan.id());
+            GlassNetworking.tell(serverPlayer, GlassNetworkManager.Result.ok("glass.msg.scanWiped", ""));
             return InteractionResult.SUCCESS;
         }
-        GlassNetworking.reply(serverPlayer, GlassNetworkManager.Result.ok(stack.get(GlassRegistry.CUBE_SCAN) != null ? "glass.msg.cubePlaceHint" : "glass.msg.cubePlaceEmpty", ""));
+        GlassNetworking.tell(serverPlayer, GlassNetworkManager.Result.ok(stack.get(GlassRegistry.CUBE_SCAN) != null ? "glass.msg.cubePlaceHint" : "glass.msg.cubePlaceEmpty", ""));
         return InteractionResult.SUCCESS;
     }
 }

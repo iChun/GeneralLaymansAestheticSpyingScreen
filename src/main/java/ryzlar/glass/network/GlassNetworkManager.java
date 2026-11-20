@@ -32,7 +32,10 @@ public final class GlassNetworkManager
     public static final int MAX_PASSWORD = 64;
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    /** When each player last got a password wrong, and last made the server hash a new one (both kept for a minute). */
     private static final Map<UUID, Deque<Long>> FAILURES = new HashMap<>();
+    private static final Map<UUID, Deque<Long>> NEW_PASSWORDS = new HashMap<>();
+    private static final long WINDOW_MILLIS = 60_000L;
 
     private GlassNetworkManager() {}
 
@@ -87,34 +90,71 @@ public final class GlassNetworkManager
         }
     }
 
+    /**
+     * The wrong passwords are kept when a player leaves (or logging out and in again would reset the limit); only the
+     * ones older than a minute are let go.
+     */
     public static void onLeave(ServerPlayer player)
     {
-        FAILURES.remove(player.getUUID());
+        long cutoff = System.currentTimeMillis() - WINDOW_MILLIS;
+        FAILURES.values().removeIf(times -> expire(times, cutoff));
+        NEW_PASSWORDS.values().removeIf(times -> expire(times, cutoff));
     }
 
     public static void onServerStopped()
     {
         FAILURES.clear();
+        NEW_PASSWORDS.clear();
+    }
+
+    /** Drops the times before the cutoff; true if none are left. */
+    private static boolean expire(Deque<Long> times, long cutoff)
+    {
+        while(!times.isEmpty() && times.peekFirst() < cutoff)
+        {
+            times.pollFirst();
+        }
+        return times.isEmpty();
+    }
+
+    /** True if the player did this as often as allowed in the last minute. */
+    private static boolean atLimit(Map<UUID, Deque<Long>> log, ServerPlayer player, int perMinute)
+    {
+        Deque<Long> times = log.get(player.getUUID());
+        if(times == null)
+        {
+            return false;
+        }
+        if(expire(times, System.currentTimeMillis() - WINDOW_MILLIS))
+        {
+            log.remove(player.getUUID());
+            return false;
+        }
+        return times.size() >= perMinute;
+    }
+
+    private static void record(Map<UUID, Deque<Long>> log, ServerPlayer player)
+    {
+        log.computeIfAbsent(player.getUUID(), k -> new ArrayDeque<>()).addLast(System.currentTimeMillis());
     }
 
     private static boolean tooManyFailures(ServerPlayer player)
     {
-        Deque<Long> failures = FAILURES.get(player.getUUID());
-        if(failures == null)
-        {
-            return false;
-        }
-        long cutoff = System.currentTimeMillis() - 60_000L;
-        while(!failures.isEmpty() && failures.peekFirst() < cutoff)
-        {
-            failures.pollFirst();
-        }
-        return failures.size() >= GlassConfig.get().failedPasswordsPerMinute;
+        return atLimit(FAILURES, player, GlassConfig.get().failedPasswordsPerMinute);
     }
 
     private static void recordFailure(ServerPlayer player)
     {
-        FAILURES.computeIfAbsent(player.getUUID(), k -> new ArrayDeque<>()).addLast(System.currentTimeMillis());
+        record(FAILURES, player);
+    }
+
+    /**
+     * Hashing a password is slow on purpose (that is what makes guessing it slow), so setting one (a new channel, a
+     * changed password) is limited too, or a player could stall the server by asking for it over and over.
+     */
+    private static boolean tooManyNewPasswords(ServerPlayer player)
+    {
+        return atLimit(NEW_PASSWORDS, player, GlassConfig.get().newPasswordsPerMinute);
     }
 
     private static boolean validPassword(String password)
@@ -165,6 +205,11 @@ public final class GlassNetworkManager
         {
             return Result.fail("glass.msg.notYourCamera");
         }
+        if(tooManyNewPasswords(player))
+        {
+            return Result.fail("glass.msg.tooManyPasswords");
+        }
+        record(NEW_PASSWORDS, player);
         PasswordHasher.Hash hash = PasswordHasher.hash(password);
         GlassNetworkData.Channel channel = new GlassNetworkData.Channel(newId(data.channels), name, player.getUUID(), player.getGameProfile().getName(),
                 hash.salt(), hash.hash(), hash.iterations(), List.of(), java.util.Optional.empty());
@@ -269,6 +314,11 @@ public final class GlassNetworkManager
         {
             return Result.fail("glass.msg.badPassword");
         }
+        if(tooManyNewPasswords(player))
+        {
+            return Result.fail("glass.msg.tooManyPasswords");
+        }
+        record(NEW_PASSWORDS, player);
         PasswordHasher.Hash hash = PasswordHasher.hash(password);
         channel.salt = hash.salt();
         channel.hash = hash.hash();

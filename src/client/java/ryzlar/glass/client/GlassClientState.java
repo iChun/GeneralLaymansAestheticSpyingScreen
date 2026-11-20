@@ -549,6 +549,12 @@ public final class GlassClientState implements GlassClientBridge
     {
         if(mc.level == null)
         {
+            //Out of the world: let go of everything. The disconnect event clears too, but on a server a last frame of the
+            //old world can be drawn after it, making views again, and they (images on the graphics card) were kept.
+            if(SpyViewRenderer.INSTANCE.viewCount() > 0 || !loadedProjectors.isEmpty())
+            {
+                clear();
+            }
             return;
         }
         if(clickedPos != null)

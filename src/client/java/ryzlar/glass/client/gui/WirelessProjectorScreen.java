@@ -122,7 +122,8 @@ public class WirelessProjectorScreen extends HoloScreen
             {
                 linked.add(projector);
             }
-            else if(!projector.active && projector.wirelessPos.size() < GlassProjectorBlockEntity.MAX_WIRELESS)
+            else if(!projector.active && projector.wirelessPos.size() < GlassProjectorBlockEntity.MAX_WIRELESS
+                    && GlassProjectorBlockEntity.inWirelessRange(projector.getBlockPos(), here))
             {
                 free.add(projector);
             }

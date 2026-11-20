@@ -23,6 +23,8 @@ public final class GlassConfig
     public int maxChannelsPerPlayer = 10;
     /** Wrong channel passwords a player may enter per minute before being made to wait. */
     public int failedPasswordsPerMinute = 5;
+    /** New channels plus changed passwords a player may make per minute (each one is slow for the server to hash). */
+    public int newPasswordsPerMinute = 5;
 
     public static GlassConfig get()
     {

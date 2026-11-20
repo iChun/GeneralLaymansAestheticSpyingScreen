@@ -12,6 +12,14 @@ base {
 loom {
 	splitEnvironmentSourceSets()
 
+	// GLASS_TEST_ONLY=stress sends a holo scan bigger than one packet, which Fabric splits below the level the client
+	// gametest's network synchroniser can follow; it says to switch the synchroniser off for that.
+	if(System.getenv("GLASS_TEST_ONLY") == "stress") {
+		runs.configureEach {
+			vmArg "-Dfabric.client.gametest.disableNetworkSynchronizer=true"
+		}
+	}
+
 	mods {
 		"generallaymansaestheticspyingscreen" {
 			sourceSet sourceSets.main
@@ -32,11 +40,66 @@ fabricApi {
 	}
 }
 
+repositories {
+	// Only for the compatibility runs below (Sodium, Iris); never part of the built jar.
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = "Modrinth"
+				url = "https://api.modrinth.com/maven"
+			}
+		}
+		filter {
+			includeGroup "maven.modrinth"
+		}
+	}
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	mappings loom.officialMojangMappings()
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Compatibility runs: ./gradlew runClient -PwithSodium (or -PwithIris, which brings Sodium too).
+	if(project.hasProperty("withSodium") || project.hasProperty("withIris")) {
+		modLocalRuntime "maven.modrinth:sodium:${project.sodium_version}"
+	}
+	if(project.hasProperty("withIris")) {
+		modLocalRuntime "maven.modrinth:iris:${project.iris_version}"
+	}
+}
+
+// Release checks with the real (remapped) jar, as players get it: ./gradlew prodServer, ./gradlew prodClient
+// (add -PwithSodium or -PwithIris to the client one). Run dirs: run/prod-server, run/prod-client.
+configurations {
+	prodMods {
+		transitive = false
+	}
+}
+
+dependencies {
+	prodMods "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	if(project.hasProperty("withSodium") || project.hasProperty("withIris")) {
+		prodMods "maven.modrinth:sodium:${project.sodium_version}"
+	}
+	if(project.hasProperty("withIris")) {
+		prodMods "maven.modrinth:iris:${project.iris_version}"
+	}
+}
+
+tasks.register("prodServer", net.fabricmc.loom.task.prod.ServerProductionRunTask) {
+	installerVersion = "1.1.2"
+	mods.from(tasks.named("remapJar"))
+	mods.from(configurations.prodMods)
+	programArgs.add("nogui")
+	runDir = file("run/prod-server")
+}
+
+tasks.register("prodClient", net.fabricmc.loom.task.prod.ClientProductionRunTask) {
+	mods.from(tasks.named("remapJar"))
+	mods.from(configurations.prodMods)
+	runDir = file("run/prod-client")
 }
 
 processResources {

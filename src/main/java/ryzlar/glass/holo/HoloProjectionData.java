@@ -37,6 +37,13 @@ public class HoloProjectionData extends SavedData
 {
     /** Largest scan, each way, in blocks. */
     public static final int MAX_SIZE = 32;
+    /**
+     * Most a holo cube scan keeps of chest contents, signs, mobs and so on, in bytes (all of it goes to every client that
+     * sees the simulation). One block entity or entity may hold at most {@link #MAX_EXTRA_BYTES}: a chest full of shulker
+     * boxes full of books is kept as an empty chest, and a mob carrying that much is left out.
+     */
+    public static final int MAX_EXTRAS_BYTES = 2 * 1024 * 1024;
+    public static final int MAX_EXTRA_BYTES = 64 * 1024;
 
     /**
      * Blocks of a scanned area: {@code blocks} holds a palette index per block, x fastest, then z, then y. Palette entry 0
@@ -118,6 +125,41 @@ public class HoloProjectionData extends SavedData
         return get(server).projections.get(id);
     }
 
+    /** Forgets a projection (its scan was wiped), so the saved projections do not grow with every scan. */
+    public static void remove(MinecraftServer server, String id)
+    {
+        HoloProjectionData data = get(server);
+        if(data.projections.remove(id) != null)
+        {
+            data.setDirty();
+        }
+    }
+
+    /**
+     * A block entity's saved data as a scan keeps it: whole if it is small enough and there is room left, else only what
+     * it is (contents dropped, see {@link #MAX_EXTRA_BYTES}). Returns the bytes it takes.
+     */
+    private static int keep(CompoundTag tag, List<CompoundTag> into, int used)
+    {
+        int size = tag.sizeInBytes();
+        if(size > MAX_EXTRA_BYTES || used + size > MAX_EXTRAS_BYTES)
+        {
+            CompoundTag bare = new CompoundTag();
+            for(String key : new String[] { "id", "x", "y", "z", Projection.LOCAL_POS })
+            {
+                net.minecraft.nbt.Tag value = tag.get(key);
+                if(value != null)
+                {
+                    bare.put(key, value.copy());
+                }
+            }
+            tag = bare;
+            size = tag.sizeInBytes();
+        }
+        into.add(tag);
+        return size;
+    }
+
     /**
      * Stores the ball round a holo cube (see {@link HoloSphere}) as a new projection: every block in it, what is in its
      * chests and on its signs, the animals, mobs, frames, stands and paintings in it, and its light. The cube's block
@@ -135,6 +177,7 @@ public class HoloProjectionData extends SavedData
         int[] blocks = new int[size * size * size];
         int[] light = new int[size * size * size];
         List<CompoundTag> blockEntities = new ArrayList<>();
+        int used = 0;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for(int y = 0; y < size; y++)
         {
@@ -167,7 +210,7 @@ public class HoloProjectionData extends SavedData
                     {
                         CompoundTag tag = blockEntity.saveWithFullMetadata(level.registryAccess());
                         tag.putIntArray(Projection.LOCAL_POS, new int[] { x, y, z });
-                        blockEntities.add(tag);
+                        used += keep(tag, blockEntities, used);
                     }
                 }
             }
@@ -189,6 +232,12 @@ public class HoloProjectionData extends SavedData
                 continue;
             }
             CompoundTag tag = output.buildResult();
+            int tagSize = tag.sizeInBytes();
+            if(tagSize > MAX_EXTRA_BYTES || used + tagSize > MAX_EXTRAS_BYTES)
+            {
+                continue;
+            }
+            used += tagSize;
             tag.putDouble(Projection.LOCAL_X, entity.getX() - corner.getX());
             tag.putDouble(Projection.LOCAL_Y, entity.getY() - corner.getY());
             tag.putDouble(Projection.LOCAL_Z, entity.getZ() - corner.getZ());

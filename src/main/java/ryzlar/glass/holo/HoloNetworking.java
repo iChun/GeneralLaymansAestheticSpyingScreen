@@ -28,6 +28,14 @@ public final class HoloNetworking
 {
     private static final double REACH_LEEWAY = 4.0D;
     private static final StreamCodec<ByteBuf, String> SHORT_STRING = ByteBufCodecs.stringUtf8(128);
+    /**
+     * Largest projection packet. A scan is bounded (see {@link HoloProjectionData#MAX_EXTRAS_BYTES}), but it can still
+     * be more than vanilla's 1 MiB for one packet, so it is sent split up.
+     */
+    public static final int MAX_PROJECTION_BYTES = 8 * 1024 * 1024;
+    /** How soon the same player gets the same projection again (the client asks again after 5 s if it got nothing). */
+    private static final long RESEND_MILLIS = 4000L;
+    private static final java.util.Map<java.util.UUID, java.util.Map<String, Long>> SENT = new java.util.HashMap<>();
 
     private HoloNetworking() {}
 
@@ -170,13 +178,15 @@ public final class HoloNetworking
         PayloadTypeRegistry.playC2S().register(ProjectorConfig.TYPE, ProjectorConfig.CODEC);
         PayloadTypeRegistry.playC2S().register(ProjectorAction.TYPE, ProjectorAction.CODEC);
         PayloadTypeRegistry.playC2S().register(RequestProjection.TYPE, RequestProjection.CODEC);
-        PayloadTypeRegistry.playS2C().register(ProjectionBlocks.TYPE, ProjectionBlocks.CODEC);
+        PayloadTypeRegistry.playS2C().registerLarge(ProjectionBlocks.TYPE, ProjectionBlocks.CODEC, MAX_PROJECTION_BYTES);
 
         ServerPlayNetworking.registerGlobalReceiver(ScannerConfig.TYPE, (payload, context) -> handleScannerConfig(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(ScannerScan.TYPE, (payload, context) -> handleScan(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(ProjectorConfig.TYPE, (payload, context) -> handleProjectorConfig(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(ProjectorAction.TYPE, (payload, context) -> handleProjectorAction(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(RequestProjection.TYPE, (payload, context) -> handleRequest(context.player(), payload));
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> SENT.remove(handler.getPlayer().getUUID()));
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server -> SENT.clear());
     }
 
     private static boolean canReach(ServerPlayer player, BlockPos pos)
@@ -203,14 +213,14 @@ public final class HoloNetworking
         int shard = player.getInventory().findSlotMatchingItem(new ItemStack(Items.AMETHYST_SHARD));
         if(!player.hasInfiniteMaterials() && shard < 0)
         {
-            GlassNetworking.reply(player, GlassNetworkManager.Result.fail("glass.msg.scanNeedsShard"));
+            GlassNetworking.tell(player, GlassNetworkManager.Result.fail("glass.msg.scanNeedsShard"));
             return;
         }
         String name = scanner.name.isBlank() ? Component.translatable("glass.ui.scan.defaultName").getString() : scanner.name.trim();
         HoloProjectionData.Projection projection = HoloProjectionData.scan(level, scanner.regionOrigin(), scanner.sizeX, scanner.sizeY, scanner.sizeZ, name);
         if(projection == null)
         {
-            GlassNetworking.reply(player, GlassNetworkManager.Result.fail("glass.msg.scanNotLoaded"));
+            GlassNetworking.tell(player, GlassNetworkManager.Result.fail("glass.msg.scanNotLoaded"));
             return;
         }
         if(!player.hasInfiniteMaterials())
@@ -223,7 +233,7 @@ public final class HoloNetworking
         {
             player.drop(crystal, false);
         }
-        GlassNetworking.reply(player, GlassNetworkManager.Result.ok("glass.msg.scanned", projection.name()));
+        GlassNetworking.tell(player, GlassNetworkManager.Result.ok("glass.msg.scanned", projection.name()));
     }
 
     private static void handleProjectorConfig(ServerPlayer player, ProjectorConfig payload)
@@ -243,7 +253,7 @@ public final class HoloNetworking
         }
         switch(ProjectorOp.values()[payload.op()])
         {
-            case LINK_EMITTERS -> GlassNetworking.reply(player, GlassNetworkManager.Result.ok("glass.msg.emittersLinked", Integer.toString(projector.linkEmitters())));
+            case LINK_EMITTERS -> GlassNetworking.tell(player, GlassNetworkManager.Result.ok("glass.msg.emittersLinked", Integer.toString(projector.linkEmitters())));
             case EJECT -> {
                 if(!projector.crystal.isEmpty())
                 {
@@ -257,6 +267,10 @@ public final class HoloNetworking
         }
     }
 
+    /**
+     * Sends a projection's blocks to the player who asked. A big one is a lot to build and send, so the same player gets
+     * the same one at most once per {@link #RESEND_MILLIS} (a client asking over and over cannot make the server work).
+     */
     private static void handleRequest(ServerPlayer player, RequestProjection payload)
     {
         HoloProjectionData.Projection projection = HoloProjectionData.find(player.level().getServer(), payload.id());
@@ -264,6 +278,21 @@ public final class HoloNetworking
         {
             return;
         }
+        long now = net.minecraft.Util.getMillis();
+        java.util.Map<String, Long> sent = SENT.computeIfAbsent(player.getUUID(), k -> new java.util.HashMap<>());
+        Long last = sent.get(projection.id());
+        if(last != null && now - last < RESEND_MILLIS)
+        {
+            return;
+        }
+        sent.values().removeIf(time -> now - time >= RESEND_MILLIS);
+        sent.put(projection.id(), now);
+        ServerPlayNetworking.send(player, blocksOf(projection));
+    }
+
+    /** The packet carrying a projection's blocks (and a cube scan's extras) to a client. */
+    public static ProjectionBlocks blocksOf(HoloProjectionData.Projection projection)
+    {
         List<Integer> palette = new ArrayList<>(projection.palette().size());
         for(BlockState state : projection.palette())
         {
@@ -280,6 +309,6 @@ public final class HoloNetworking
             light.add(value);
         }
         ProjectionExtras extras = new ProjectionExtras(projection.blockEntities(), projection.entities(), light);
-        ServerPlayNetworking.send(player, new ProjectionBlocks(projection.id(), projection.sizeX(), projection.sizeY(), projection.sizeZ(), palette, blocks, extras));
+        return new ProjectionBlocks(projection.id(), projection.sizeX(), projection.sizeY(), projection.sizeZ(), palette, blocks, extras);
     }
 }

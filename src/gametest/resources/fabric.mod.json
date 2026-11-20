@@ -6,10 +6,12 @@
   "environment": "*",
   "entrypoints": {
     "fabric-client-gametest": [
-      "ryzlar.glass.test.GlassClientGameTest"
+      "ryzlar.glass.test.GlassClientGameTest",
+      "ryzlar.glass.test.GlassClientStressTest"
     ],
     "fabric-gametest": [
-      "ryzlar.glass.test.GlassServerGameTest"
+      "ryzlar.glass.test.GlassServerGameTest",
+      "ryzlar.glass.test.GlassStressGameTest"
     ]
   },
   "depends": {
