@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "ryzlar.glass.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "BlockCollisionsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

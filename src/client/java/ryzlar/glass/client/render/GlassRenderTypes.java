@@ -200,18 +200,6 @@ public final class GlassRenderTypes
     public static final RenderType SCAN = RenderType.create("glass_scan", 1536, false, false, SCAN_PIPELINE,
             RenderType.CompositeState.builder().createCompositeState(false));
 
-    /** The dome round a holo cube's simulation, showing the scan's panorama (glass_dome). */
-    public static final RenderPipeline DOME_PIPELINE = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET, RenderPipelines.GLOBALS_SNIPPET)
-            .withLocation(Glass.id("pipeline/glass_dome"))
-            .withVertexShader(Glass.id("core/glass_dome"))
-            .withFragmentShader(Glass.id("core/glass_dome"))
-            .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.QUADS)
-            .withBlend(com.mojang.blaze3d.pipeline.BlendFunction.TRANSLUCENT)
-            .withCull(false)
-            .build();
-    /** The dome round a holo cube's simulation, seen from inside: a black void with the BARF edge (glass_dome). */
-    public static final RenderType DOME = RenderType.create("glass_dome", 1536, false, false, DOME_PIPELINE,
-            RenderType.CompositeState.builder().createCompositeState(false));
 
     private static final Map<ResourceLocation, RenderType> SCREENS = new HashMap<>();
     private static final Map<ResourceLocation, RenderType> SCREENS_NO_CULL = new HashMap<>();

@@ -13,12 +13,11 @@ import ryzlar.glass.Glass;
 import ryzlar.glass.GlassRegistry;
 import ryzlar.glass.blockentity.GlassProjectorBlockEntity;
 import ryzlar.glass.holo.HoloCubeEntity;
-import ryzlar.glass.holo.PanoramaStore;
 
 import java.util.List;
 
 /**
- * Tests on a dedicated server (no client code at all): the mod loads there, a holo cube scans a room on its own, worlds
+ * Tests on a dedicated server (no client code at all): the mod loads there, a holo cube scans its ball and stands in it, worlds
  * from before the holo cube was renamed still load it, and four corner extensions make a cloak field.
  * Run with {@code ./gradlew runGameTest}.
  */
@@ -34,31 +33,50 @@ public class GlassServerGameTest
         helper.succeed();
     }
 
-    /** A cube set down in a little room scans it into itself. */
+    /**
+     * A cube scans the ball round it, chest contents and all; switched on, its ground can be stood on where the world is
+     * empty, the rest is walked through, and the real world is not touched.
+     */
     @GameTest(maxTicks = 260)
-    public void cubeScansItsRoom(GameTestHelper helper)
+    public void cubeScansAndStandsInItsBall(GameTestHelper helper)
     {
-        //A hollow 5x4x5 room of stone with a torch on the floor.
-        for(int x = 1; x <= 5; x++)
+        //A stone floor with a chest holding a diamond on it.
+        for(int x = 0; x <= 8; x++)
         {
-            for(int y = 1; y <= 4; y++)
+            for(int z = 0; z <= 8; z++)
             {
-                for(int z = 1; z <= 5; z++)
-                {
-                    boolean shell = x == 1 || x == 5 || y == 1 || y == 4 || z == 1 || z == 5;
-                    helper.setBlock(x, y, z, shell ? Blocks.STONE : Blocks.AIR);
-                }
+                helper.setBlock(x, 1, z, Blocks.STONE);
             }
         }
-        helper.setBlock(2, 2, 2, Blocks.TORCH);
-        HoloCubeEntity cube = helper.spawn(GlassRegistry.HOLO_CUBE_ENTITY, new BlockPos(3, 2, 3));
+        helper.setBlock(5, 2, 4, Blocks.CHEST);
+        if(helper.getBlockEntity(new BlockPos(5, 2, 4), net.minecraft.world.level.block.entity.ChestBlockEntity.class) instanceof net.minecraft.world.level.block.entity.ChestBlockEntity chest)
+        {
+            chest.setItem(0, new ItemStack(net.minecraft.world.item.Items.DIAMOND));
+        }
+        HoloCubeEntity cube = helper.spawn(GlassRegistry.HOLO_CUBE_ENTITY, new BlockPos(4, 2, 4));
         cube.setItem(new ItemStack(GlassRegistry.HOLO_CUBE));
         Player player = helper.makeMockPlayer(GameType.SURVIVAL);
         helper.runAfterDelay(2, () -> cube.scanFor(player));
         helper.succeedWhen(() -> {
             helper.assertTrue(cube.scan() != null, Component.literal("the cube has no scan yet"));
-            helper.assertTrue(cube.scan().sizeX() == 5 && cube.scan().sizeZ() == 5, Component.literal("the scan is not the room: " + cube.scan()));
-            helper.assertTrue(!PanoramaStore.has(helper.getLevel().getServer(), cube.scan().id()), Component.literal("no client, so no panorama"));
+            helper.assertTrue(cube.scan().isCurrent() && cube.scan().sizeX() == ryzlar.glass.holo.HoloSphere.SIZE, Component.literal("the scan is not the ball: " + cube.scan()));
+            var projection = ryzlar.glass.holo.HoloProjectionData.find(helper.getLevel().getServer(), cube.scan().id());
+            helper.assertTrue(projection != null && projection.blockEntities().stream().anyMatch(tag -> tag.toString().contains("diamond")),
+                    Component.literal("the chest's diamond is not in the scan"));
+            //Switched on: the scanned (shrunk) floor can be stood on in the floor's block, the cube's own block has no
+            //ground in it (the chest beside it is walked through), and the real world is left as it was.
+            if(!cube.projecting())
+            {
+                cube.toggle();
+            }
+            cube.tick();
+            BlockPos floor = helper.absolutePos(new BlockPos(4, 1, 4));
+            var ground = ryzlar.glass.holo.HoloBubbles.groundAt(helper.getLevel(), floor);
+            helper.assertTrue(ground != null && !ground.isEmpty(), Component.literal("the simulation's ground cannot be stood on"));
+            helper.assertTrue(ryzlar.glass.holo.HoloBubbles.groundAt(helper.getLevel(), helper.absolutePos(new BlockPos(4, 2, 4))) == null,
+                    Component.literal("the simulation has ground where it should be walked through"));
+            helper.assertTrue(helper.getLevel().getBlockState(floor).is(Blocks.STONE) && helper.getLevel().getBlockState(helper.absolutePos(new BlockPos(5, 2, 4))).is(Blocks.CHEST),
+                    Component.literal("the real world was changed"));
         });
     }
 

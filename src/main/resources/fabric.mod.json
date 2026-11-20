@@ -22,6 +22,7 @@
     ]
   },
   "mixins": [
+    "generallaymansaestheticspyingscreen.mixins.json",
     {
       "config": "generallaymansaestheticspyingscreen.client.mixins.json",
       "environment": "client"

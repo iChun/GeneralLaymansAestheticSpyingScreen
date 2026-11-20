@@ -1,32 +1,43 @@
 package ryzlar.glass.client.holo;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector3f;
 import ryzlar.glass.client.render.GlassRenderTypes;
 import ryzlar.glass.holo.CubeScan;
+import ryzlar.glass.holo.HoloBubbles;
 import ryzlar.glass.holo.HoloCubeEntity;
 import ryzlar.glass.holo.HoloProjectorBlockEntity;
+import ryzlar.glass.holo.HoloSphere;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Draws a holo cube on the ground (its Blockbench model: it rises a little while it projects, its frame turning and its core
- * breathing) and its room: a solid 1:1
- * simulation laid around it. The nano wave grows slowly out of the cube, and shrinks back into it when switched off. The
- * room's edge falls apart into blue nano pixels (glass_holo.fsh) and sheds little blue shards, so it is plain where the
- * simulation ends.
+ * Draws a holo cube on the ground (its Blockbench model: it rises a little while it projects or scans, its frame turning
+ * and its core breathing), its scan ("digitizing", see {@link ScanEffect}), and its simulation: the scanned ball, 1:1,
+ * inside a glowing bubble that grows out of the cube.
+ * <p>
+ * From outside the bubble the scan shows through its wall in blue hologram colours; inside it, in its real colours and
+ * light, with its chests, signs, beds, animals and mobs (stand-ins, frozen as they were). The real world in the ball is
+ * hidden meanwhile (see {@link SimulationView}), and the sky is the scanned one ({@link SimulatedSky}).
  */
 public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRenderer.State>
 {
@@ -38,6 +49,10 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
     private static final float HOVER_TICKS = 20F;
     /** Where the wave starts, from the cube's block corner: the cube itself, floating above the floor. */
     private static final Vec3 WAVE_ORIGIN = new Vec3(0.5D, 0.55D, 0.5D);
+    /** The bubble's centre, from the cube's block corner: the shrunk ball's centre (the scan stands on the cube's floor). */
+    private static final Vec3 CENTRE = new Vec3(0.5D, 0.5D * HoloSphere.SCALE, 0.5D);
+    /** The scanned ball's centre in the real world, from the cube's block corner (the cube's block centre). */
+    private static final Vec3 SCAN_CENTRE = new Vec3(0.5D, 0.5D, 0.5D);
 
     public static class State extends EntityRenderState
     {
@@ -45,7 +60,6 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         BlockPos anchor = BlockPos.ZERO;
         int turn;
         float radius;
-        float brightness = 1F;
         float spin;
         @Nullable
         CubeScan scan;
@@ -57,17 +71,18 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         float coreSpin;
         float pulse;
         float time;
+        float partialTick;
         boolean scanning;
         boolean showBounds;
-        float scanRadius;
+        float scanProgress;
         float scanFade;
         float scanFlash;
         @Nullable
-        ryzlar.glass.holo.RoomScan.Room room;
+        it.unimi.dsi.fastutil.longs.LongList surfaces;
         long scanStart;
     }
 
-    /** How long the scan's light takes to fade once the scan is done, and how long its flash lasts (ticks). */
+    /** How long the scan's pixels take to fade once the scan is done, and how long its flash lasts (ticks). */
     private static final float SCAN_FADE_TICKS = 30F;
     private static final float SCAN_FLASH_TICKS = 12F;
     private static final int BEAMS = 6;
@@ -111,13 +126,7 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         state.scan = entity.scan();
         state.entity = entity;
         state.radius = entity.waveRadius(partialTick);
-        //Lit like a block where the cube lies (day, night, torches); daylight as the client sees it, so standing in a
-        //simulation scanned at night it is night-dark (see SimulatedSky).
-        net.minecraft.world.level.Level level = entity.level();
-        int sky = level.getBrightness(net.minecraft.world.level.LightLayer.SKY, entity.anchor());
-        int block = level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, entity.anchor());
-        float daylight = level instanceof ClientLevel client ? client.getSkyDarken(partialTick) : 1F;
-        state.brightness = 0.25F + 0.75F * Math.max(sky * daylight, block) / 15F;
+        state.partialTick = partialTick;
         long now = entity.level().getGameTime();
         float time = now + partialTick;
         state.time = time;
@@ -143,11 +152,11 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         state.coreSpin = -time * 2.5F;
         state.pulse = 1F + state.hover * 0.08F * (float)Math.sin(time * 0.2F);
         state.scanning = entity.scanning();
-        //Looking at a cube that has not scanned yet: show how far its scan can reach.
+        //Looking at a cube that has not scanned yet: show the ball its scan will take.
         state.showBounds = entity.scan() == null && !entity.scanning() && Minecraft.getInstance().crosshairPickEntity == entity;
-        state.room = entity.clientRoom;
+        state.surfaces = entity.clientSurfaces;
         state.scanStart = entity.clientScanStart;
-        state.scanRadius = entity.scanRadius(partialTick);
+        state.scanProgress = entity.scanProgress(partialTick);
         if(state.scanning)
         {
             float whirl = time - entity.clientScanStart;
@@ -168,7 +177,7 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         itemModels.updateForNonLiving(state.core, CORE, net.minecraft.world.item.ItemDisplayContext.NONE, entity);
     }
 
-    /** The room is big and the cube small: keep drawing while the room may be on screen. */
+    /** The bubble is big and the cube small: keep drawing while the bubble may be on screen. */
     @Override
     public boolean shouldRender(HoloCubeEntity entity, Frustum frustum, double x, double y, double z)
     {
@@ -206,135 +215,233 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
             return;
         }
         HologramRenderer.Hologram hologram = hologram(level, state, projection);
-        if(state.entity != null)
-        {
-            state.entity.clientReach = hologram.reach;
-        }
-        //The scanned sky comes and goes with the wave, like the room.
-        SimulatedSky.offer(state.entityId, state.anchor, hologram.boxMin, hologram.boxMax, wallsReached(state, hologram), state.scan, (long)state.time);
+        float grown = Math.clamp(state.radius / HoloCubeEntity.FULL_RADIUS, 0F, 1F);
+        Vec3 centre = Vec3.atLowerCornerOf(state.anchor).add(CENTRE);
+        //The scanned sky comes and goes with the bubble.
+        SimulatedSky.offer(state.entityId, centre, HoloSphere.BUBBLE_RADIUS, grown, state.scan, (long)state.time);
+        Vec3 eye = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        boolean inside = eye.distanceTo(centre) < HoloSphere.BUBBLE_RADIUS;
+
         poseStack.pushPose();
         poseStack.translate(state.anchor.getX() - state.x, state.anchor.getY() - state.y, state.anchor.getZ() - state.z);
-        hologram.replay(buffers.getBuffer(GlassRenderTypes.hologram(HoloProjectorBlockEntity.Look.SOLID.ordinal())), poseStack.last(), state.radius, state.brightness);
-        drawShards(buffers.getBuffer(GlassRenderTypes.hologram(HoloProjectorBlockEntity.Look.BLUE.ordinal())), poseStack.last(), hologram,
-                   state.time, state.radius);
-        drawDome(state, hologram, poseStack.last(), buffers);
-        drawBarrier(state, hologram, poseStack.last(), buffers);
+        //Inside: the place as it was. Outside: a blue hologram of it, seen through the bubble's wall.
+        int look = inside ? HoloProjectorBlockEntity.Look.SOLID.ordinal() : HoloProjectorBlockEntity.Look.BLUE.ordinal();
+        hologram.replay(buffers.getBuffer(GlassRenderTypes.hologram(look)), poseStack.last(), state.radius, 1F);
+        poseStack.popPose();
+
+        drawStandIns(state, poseStack, buffers, inside);
+
+        poseStack.pushPose();
+        poseStack.translate(state.anchor.getX() - state.x, state.anchor.getY() - state.y, state.anchor.getZ() - state.z);
+        drawWall(state, poseStack.last(), buffers, Math.min(state.radius - 0.3F, HoloSphere.BUBBLE_RADIUS), grown, inside);
         poseStack.popPose();
     }
 
-    /** How far round the room the dome lies, and over how many blocks inside the room it fades in (blocks). */
-    private static final float DOME_MARGIN = 0.6F;
-    private static final float DOME_FADE = 1.5F;
+    // ---- The bubble's wall ----
+
+    private static final int WALL_RINGS = 24;
+    private static final int WALL_SEGMENTS = 48;
 
     /**
-     * How far the nano wave has come towards the room's walls (0..1): the dome, the barrier and the scanned sky and
-     * weather come with it, and are all there once it reaches the walls at ground level (not only once it has filled
-     * a tall room up to its top, which takes long).
+     * The bubble's glowing wall (the barrier look of glass_back: a faint blue sheen, a coarse grid, bands of light
+     * rising, a nano grid close up), a ball round the cube's block as far as the bubble has grown. Its foot is where it
+     * meets the ground the cube stands on.
      */
-    private static float wallsReached(State state, HologramRenderer.Hologram hologram)
+    private static void drawWall(State state, PoseStack.Pose pose, MultiBufferSource buffers, float radius, float fade, boolean inside)
     {
-        org.joml.Vector3f min = hologram.boxMin, max = hologram.boxMax;
-        float dx = Math.max(Math.abs(min.x - (float)WAVE_ORIGIN.x), Math.abs(max.x - (float)WAVE_ORIGIN.x));
-        float dz = Math.max(Math.abs(min.z - (float)WAVE_ORIGIN.z), Math.abs(max.z - (float)WAVE_ORIGIN.z));
-        float walls = (float)Math.sqrt(dx * dx + dz * dz) + 1F;
-        return Math.clamp(state.radius / Math.min(walls, hologram.reach + 2F), 0F, 1F);
-    }
-
-    /**
-     * Standing inside the simulation, a dome round the room shuts the real world out: a black void, so all there is is
-     * the simulation itself, with the BARF edge at the foot of its walls (glass_dome). It fades in as you walk in, and
-     * with the nano wave. From outside the room it is not there: the room stands in the real world, inside its barrier.
-     */
-    private static void drawDome(State state, HologramRenderer.Hologram hologram, PoseStack.Pose pose, MultiBufferSource buffers)
-    {
-        if(state.scan == null)
+        if(radius <= 0.1F || fade <= 0.01F)
         {
             return;
         }
-        Vec3 eye = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition().subtract(state.anchor.getX(), state.anchor.getY(), state.anchor.getZ());
-        org.joml.Vector3f min = hologram.boxMin, max = hologram.boxMax;
-        float inside = (float)Math.min(Math.min(eye.x - min.x, max.x - eye.x), Math.min(Math.min(eye.z - min.z, max.z - eye.z), Math.min(eye.y - min.y, max.y - eye.y)));
-        if(inside <= 0F)
+        VertexConsumer consumer = buffers.getBuffer(GlassRenderTypes.BACK);
+        int alpha = Mth.clamp(Math.round((inside ? 0.85F : 1F) * fade * 255F), 0, 255);
+        float cx = (float)CENTRE.x, cy = (float)CENTRE.y, cz = (float)CENTRE.z;
+        for(int r = 0; r < WALL_RINGS; r++)
         {
-            return;
-        }
-        float fade = Math.clamp(inside / DOME_FADE, 0F, 1F) * wallsReached(state, hologram);
-        if(fade <= 0.01F)
-        {
-            return;
-        }
-        float x0 = min.x - DOME_MARGIN, y0 = min.y - DOME_MARGIN, z0 = min.z - DOME_MARGIN;
-        float x1 = max.x + DOME_MARGIN, y1 = max.y + DOME_MARGIN, z1 = max.z + DOME_MARGIN;
-        float[][][] faces = {
-                { { x0, y0, z0 }, { x1, y0, z0 }, { x1, y1, z0 }, { x0, y1, z0 } },
-                { { x0, y0, z1 }, { x0, y1, z1 }, { x1, y1, z1 }, { x1, y0, z1 } },
-                { { x0, y0, z0 }, { x0, y1, z0 }, { x0, y1, z1 }, { x0, y0, z1 } },
-                { { x1, y0, z0 }, { x1, y0, z1 }, { x1, y1, z1 }, { x1, y1, z0 } },
-                { { x0, y1, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { x0, y1, z1 } },
-                { { x0, y0, z0 }, { x0, y0, z1 }, { x1, y0, z1 }, { x1, y0, z0 } },
-        };
-        int alpha = Math.clamp(Math.round(fade * 255F), 0, 255);
-        com.mojang.blaze3d.vertex.VertexConsumer consumer = buffers.getBuffer(GlassRenderTypes.DOME);
-        for(int f = 0; f < faces.length; f++)
-        {
-            boolean wall = f < 4;
-            for(float[] c : faces[f])
+            double lat0 = Math.PI * r / WALL_RINGS - Math.PI / 2D, lat1 = Math.PI * (r + 1) / WALL_RINGS - Math.PI / 2D;
+            for(int s = 0; s < WALL_SEGMENTS; s++)
             {
-                //Where on its wall each corner is: along it, and how high above the ground the cube stands on (its
-                //block's floor is 0 here; the roof and floor are far up, out of the edge's band).
-                float along = f < 2 ? c[0] - x0 : c[2] - z0;
-                float up = wall ? c[1] : 1000F;
-                consumer.addVertex(pose, c[0], c[1], c[2]).setUv(along, up).setColor(255, 255, 255, alpha);
+                double lon0 = Math.PI * 2D * s / WALL_SEGMENTS, lon1 = Math.PI * 2D * (s + 1) / WALL_SEGMENTS;
+                //Surface coordinates in blocks: round the ball, and up it from its foot (for the grid and the rising bands).
+                wallVertex(consumer, pose, cx, cy, cz, radius, lat0, lon0, alpha);
+                wallVertex(consumer, pose, cx, cy, cz, radius, lat0, lon1, alpha);
+                wallVertex(consumer, pose, cx, cy, cz, radius, lat1, lon1, alpha);
+                wallVertex(consumer, pose, cx, cy, cz, radius, lat1, lon0, alpha);
             }
         }
     }
 
-    /** How far round the room the barrier stands (blocks). */
-    private static final float BARRIER_MARGIN = 0.15F;
+    private static void wallVertex(VertexConsumer consumer, PoseStack.Pose pose, float cx, float cy, float cz, float radius, double lat, double lon, int alpha)
+    {
+        float nx = (float)(Math.cos(lat) * Math.cos(lon)), ny = (float)Math.sin(lat), nz = (float)(Math.cos(lat) * Math.sin(lon));
+        float su = (float)(lon * radius), sv = (float)((lat + Math.PI / 2D) * radius);
+        consumer.addVertex(pose, cx + nx * radius, cy + ny * radius, cz + nz * radius)
+                .setColor(0, 0, 255, alpha)
+                .setUv(su, sv)
+                .setUv1(32767, 32767)
+                .setUv2(0, 0)
+                .setNormal(pose, nx, ny, nz);
+    }
+
+    // ---- The scan's chests, signs, beds, animals and mobs ----
 
     /**
-     * The simulation's barrier: a glowing box round the room (its walls and roof, see {@link ScreenBack}), so it is plain
-     * from outside that a simulation is running there, and from inside where it ends. Walking through it ripples it. It
-     * fades in and out with the nano wave.
+     * The scan's block entities and entities, as stand-ins frozen as they were (see SimulationView), shrunk with the
+     * scan and lit with the scanned light; from outside tinted like the hologram. Only as far as the wave has grown.
      */
-    private static void drawBarrier(State state, HologramRenderer.Hologram hologram, PoseStack.Pose pose, MultiBufferSource buffers)
+    private static void drawStandIns(State state, PoseStack poseStack, MultiBufferSource buffers, boolean inside)
     {
-        float fade = wallsReached(state, hologram);
-        if(fade <= 0.01F)
+        if(state.entity == null)
         {
             return;
         }
-        org.joml.Vector3f min = new org.joml.Vector3f(hologram.boxMin).sub(BARRIER_MARGIN, 0F, BARRIER_MARGIN);
-        org.joml.Vector3f max = new org.joml.Vector3f(hologram.boxMax).add(BARRIER_MARGIN, BARRIER_MARGIN, BARRIER_MARGIN);
-        ryzlar.glass.client.render.ScreenBack.drawBarrier("cube@" + state.entityId, min, max, state.anchor, pose, buffers, state.time - (long)state.time, fade);
+        HoloBubbles.Bubble bubble = HoloBubbles.byId(state.entity.level(), state.entityId);
+        SimulationView.Scene scene = bubble == null ? null : SimulationView.scene(state.entity, bubble);
+        if(scene == null)
+        {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        Vec3 camera = mc.gameRenderer.getMainCamera().getPosition();
+        Vec3 wave = Vec3.atLowerCornerOf(state.anchor).add(WAVE_ORIGIN);
+        MultiBufferSource target = inside ? buffers : new TintedBuffers(buffers);
+        float scale = HoloSphere.SCALE;
+        for(SimulationView.Placed placed : scene.blockEntities)
+        {
+            BlockPos at = placed.scanPos();
+            //The block's place in the world: shrunk and turned, still a box; drawn from its lowest corner.
+            Vec3 a = bubble.toWorld(at.getX(), at.getY(), at.getZ()), b = bubble.toWorld(at.getX() + 1, at.getY() + 1, at.getZ() + 1);
+            Vec3 corner = new Vec3(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.min(a.z, b.z));
+            if(corner.add(scale / 2D, scale / 2D, scale / 2D).distanceTo(wave) > state.radius)
+            {
+                continue;
+            }
+            BlockEntityRenderer<BlockEntity> renderer = mc.getBlockEntityRenderDispatcher().getRenderer(placed.blockEntity());
+            if(renderer == null)
+            {
+                continue;
+            }
+            poseStack.pushPose();
+            poseStack.translate(corner.x - state.x, corner.y - state.y, corner.z - state.z);
+            poseStack.scale(scale, scale, scale);
+            try
+            {
+                renderer.render(placed.blockEntity(), state.partialTick, poseStack, target, scene.light(at.getX(), at.getY(), at.getZ()), OverlayTexture.NO_OVERLAY, camera);
+            }
+            catch(RuntimeException ignored)
+            {
+                //A stand-in that cannot be drawn this way is left out.
+            }
+            poseStack.popPose();
+        }
+        for(SimulationView.PlacedEntity placed : scene.entities)
+        {
+            Entity entity = placed.entity();
+            if(entity.position().distanceTo(wave) > state.radius)
+            {
+                continue;
+            }
+            Vec3 at = placed.scanPos();
+            poseStack.pushPose();
+            poseStack.translate(entity.getX() - state.x, entity.getY() - state.y, entity.getZ() - state.z);
+            poseStack.scale(scale, scale, scale);
+            try
+            {
+                mc.getEntityRenderDispatcher().render(entity, 0D, 0D, 0D, 0F, poseStack, target,
+                        scene.light((int)Math.floor(at.x), (int)Math.floor(at.y), (int)Math.floor(at.z)));
+            }
+            catch(RuntimeException ignored)
+            {
+                //Likewise.
+            }
+            poseStack.popPose();
+        }
     }
 
-    /** The box a scan can reach (the room is found inside it), pulsing faintly, with its floor marked. */
+    /** Draws everything given to it in the hologram's cyan, for the stand-ins seen from outside the bubble. */
+    private record TintedBuffers(MultiBufferSource inner) implements MultiBufferSource
+    {
+        @Override
+        public VertexConsumer getBuffer(RenderType type)
+        {
+            return new Tint(inner.getBuffer(type));
+        }
+    }
+
+    private record Tint(VertexConsumer inner) implements VertexConsumer
+    {
+        @Override
+        public VertexConsumer addVertex(float x, float y, float z)
+        {
+            inner.addVertex(x, y, z);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setColor(int r, int g, int b, int a)
+        {
+            //Its brightness, in the hologram's blue.
+            float luma = (0.299F * r + 0.587F * g + 0.114F * b) / 255F;
+            inner.setColor(Mth.clamp((int)(60 * luma + 20), 0, 255), Mth.clamp((int)(230 * luma + 25), 0, 255), 255, a);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv(float u, float v)
+        {
+            inner.setUv(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv1(int u, int v)
+        {
+            inner.setUv1(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv2(int u, int v)
+        {
+            //Glowing, as holograms do.
+            inner.setUv2(240, 240);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setNormal(float x, float y, float z)
+        {
+            inner.setNormal(x, y, z);
+            return this;
+        }
+    }
+
+    // ---- Before a scan ----
+
+    /** The ball a scan will take, pulsing faintly: three great circles round the cube's block. */
     private static void drawBounds(State state, PoseStack poseStack, MultiBufferSource buffers)
     {
-        com.mojang.blaze3d.vertex.VertexConsumer lines = buffers.getBuffer(net.minecraft.client.renderer.RenderType.lines());
+        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
         poseStack.pushPose();
         poseStack.translate(state.anchor.getX() - state.x, state.anchor.getY() - state.y, state.anchor.getZ() - state.z);
         PoseStack.Pose pose = poseStack.last();
         float pulse = 0.5F + 0.5F * (float)Math.sin(state.time * 0.15F);
         int colour = (int)(90 + 90 * pulse) << 24 | 0x3CE6FF;
-        float x0 = -ryzlar.glass.holo.RoomScan.HALF_WIDTH, x1 = ryzlar.glass.holo.RoomScan.HALF_WIDTH;
-        float y0 = -ryzlar.glass.holo.RoomScan.BELOW, y1 = ryzlar.glass.holo.RoomScan.ABOVE + 1;
-        float z0 = x0, z1 = x1;
-        float[][] corners = { { x0, z0 }, { x1, z0 }, { x1, z1 }, { x0, z1 } };
-        for(int i = 0; i < 4; i++)
+        float r = HoloSphere.SCAN_RADIUS + 0.5F;
+        float cx = (float)SCAN_CENTRE.x, cy = (float)SCAN_CENTRE.y, cz = (float)SCAN_CENTRE.z;
+        int segments = 48;
+        for(int s = 0; s < segments; s++)
         {
-            float[] a = corners[i], b = corners[(i + 1) % 4];
-            boundsLine(lines, pose, a[0], y0, a[1], b[0], y0, b[1], colour);
-            boundsLine(lines, pose, a[0], y1, a[1], b[0], y1, b[1], colour);
-            boundsLine(lines, pose, a[0], y0, a[1], a[0], y1, a[1], colour);
-            //The cube's own floor level, round the box.
-            boundsLine(lines, pose, a[0], 0F, a[1], b[0], 0F, b[1], (colour & 0xFFFFFF) | (int)(40 + 50 * pulse) << 24);
+            double a0 = Math.PI * 2D * s / segments, a1 = Math.PI * 2D * (s + 1) / segments;
+            float c0 = (float)Math.cos(a0) * r, s0 = (float)Math.sin(a0) * r, c1 = (float)Math.cos(a1) * r, s1 = (float)Math.sin(a1) * r;
+            boundsLine(lines, pose, cx + c0, cy, cz + s0, cx + c1, cy, cz + s1, colour);
+            boundsLine(lines, pose, cx + c0, cy + s0, cz, cx + c1, cy + s1, cz, colour);
+            boundsLine(lines, pose, cx, cy + s0, cz + c0, cx, cy + s1, cz + c1, colour);
         }
         poseStack.popPose();
     }
 
-    private static void boundsLine(com.mojang.blaze3d.vertex.VertexConsumer lines, PoseStack.Pose pose, float ax, float ay, float az, float bx, float by, float bz, int colour)
+    private static void boundsLine(VertexConsumer lines, PoseStack.Pose pose, float ax, float ay, float az, float bx, float by, float bz, int colour)
     {
         float nx = bx - ax, ny = by - ay, nz = bz - az;
         float length = (float)Math.sqrt(nx * nx + ny * ny + nz * nz);
@@ -345,14 +452,12 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         lines.addVertex(pose, bx, by, bz).setColor(colour).setNormal(pose, nx, ny, nz);
     }
 
-    /** The scan running over the real room (see {@link ScanEffect}), and laser lines from the cube to its front. */
+    // ---- Scanning ----
+
+    /** The scan on the real world (see {@link ScanEffect}): the grid ball, the faces coming apart, and laser lines. */
     private void drawScan(State state, PoseStack poseStack, MultiBufferSource buffers, float cubeHeight)
     {
-        if(Panoramas.capturing())
-        {
-            return; //the panorama is of the room, not of the scan
-        }
-        if(state.room == null || state.scanFade <= 0F)
+        if(state.surfaces == null || state.scanFade <= 0F)
         {
             if(!state.scanning)
             {
@@ -363,111 +468,49 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         ScanEffect effect = scans.get(state.entityId);
         if(effect == null || effect.builtFor != state.scanStart)
         {
-            effect = new ScanEffect(state.room, state.anchor, new org.joml.Vector3f((float)WAVE_ORIGIN.x, (float)WAVE_ORIGIN.y, (float)WAVE_ORIGIN.z), state.scanStart);
+            effect = new ScanEffect(state.surfaces, state.anchor, new Vector3f((float)WAVE_ORIGIN.x, (float)WAVE_ORIGIN.y, (float)WAVE_ORIGIN.z), state.scanStart);
             scans.put(state.entityId, effect);
         }
         poseStack.pushPose();
         poseStack.translate(state.anchor.getX() - state.x, state.anchor.getY() - state.y, state.anchor.getZ() - state.z);
-        effect.draw(buffers.getBuffer(GlassRenderTypes.SCAN), poseStack.last(), state.scanRadius, state.scanFade, state.scanFlash);
+        effect.draw(buffers.getBuffer(GlassRenderTypes.SCAN), poseStack.last(), state.scanProgress, state.scanFade, state.scanFlash);
+        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
+        Vector3f core = new Vector3f(0.5F, cubeHeight, 0.5F);
+        effect.grid(lines, poseStack.last(), new Vector3f((float)SCAN_CENTRE.x, (float)SCAN_CENTRE.y, (float)SCAN_CENTRE.z), state.scanProgress,
+                state.scanning ? 1F : state.scanFade, state.time);
         if(state.scanning)
         {
-            //From the cube's core: the entity stands at the block's centre, so the core is half a block in.
-            org.joml.Vector3f core = new org.joml.Vector3f(0.5F, cubeHeight, 0.5F);
-            effect.beams(buffers.getBuffer(net.minecraft.client.renderer.RenderType.lines()), poseStack.last(), core, state.scanRadius,
-                    state.entityId * 7919 + (int)(state.time / 2F), BEAMS);
+            beams(lines, poseStack.last(), core, ScanEffect.front(state.scanProgress), state.entityId * 7919 + (int)(state.time / 2F));
         }
         poseStack.popPose();
     }
 
-    /** Shards per block of the room's outline, and at most this many. */
-    private static final float SHARDS_PER_BLOCK = 2.5F;
-    private static final int MAX_SHARDS = 200;
-    private static final net.minecraft.resources.ResourceLocation SHARD_TEXTURE = ryzlar.glass.Glass.id("block/holo_glow");
-
-    /**
-     * Little blue shards coming off the room's walls: each starts just inside the edge, drifts out and up, and fades
-     * (shrinks) away, then starts again somewhere else. Drawn as holograms, so the nano wave brings and takes them too.
-     */
-    private static void drawShards(com.mojang.blaze3d.vertex.VertexConsumer consumer, PoseStack.Pose pose, HologramRenderer.Hologram hologram, float time, float radius)
+    /** Laser lines from the cube's core out to the grid ball's front, changing every couple of ticks. */
+    private static void beams(VertexConsumer lines, PoseStack.Pose pose, Vector3f from, float radius, int seed)
     {
-        org.joml.Vector3f min = hologram.boxMin, max = hologram.boxMax;
-        float w = max.x - min.x, d = max.z - min.z, h = max.y - min.y;
-        float perimeter = 2F * (w + d);
-        if(!(perimeter > 0F) || !(h > 0F))
+        if(radius <= 0.2F)
         {
             return;
         }
-        net.minecraft.client.renderer.texture.TextureAtlasSprite sprite = Minecraft.getInstance()
-                .getTextureAtlas(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS).apply(SHARD_TEXTURE);
-        float u0 = sprite.getU(0.3F), u1 = sprite.getU(0.7F), v0 = sprite.getV(0.3F), v1 = sprite.getV(0.7F);
-        int encodedRadius = HologramRenderer.Hologram.encodeRadius(radius);
-        int count = Math.min(MAX_SHARDS, (int)(perimeter * SHARDS_PER_BLOCK));
-        for(int i = 0; i < count; i++)
+        for(int i = 0; i < BEAMS; i++)
         {
-            float period = 50F + random(i, 1) * 70F;
-            float cycles = time / period + random(i, 2);
-            int cycle = (int)Math.floor(cycles);
-            float age = cycles - cycle;
-            int seed = i * 7919 + cycle * 104729;
-            //A spot on the walls: along the outline, at some height, and the way out of the room there.
-            float along = random(seed, 3) * perimeter;
-            float px, pz, nx = 0F, nz = 0F;
-            if(along < w)
+            double yaw = random(seed, i) * Math.PI * 2D;
+            double pitch = (random(seed, i + 31) - 0.5D) * Math.PI;
+            float tx = (float)(SCAN_CENTRE.x + Math.cos(pitch) * Math.cos(yaw) * radius);
+            float ty = (float)(SCAN_CENTRE.y + Math.sin(pitch) * radius);
+            float tz = (float)(SCAN_CENTRE.z + Math.cos(pitch) * Math.sin(yaw) * radius);
+            float nx = tx - from.x, ny = ty - from.y, nz = tz - from.z;
+            float length = (float)Math.sqrt(nx * nx + ny * ny + nz * nz);
+            if(length < 1.0E-4F)
             {
-                px = min.x + along;
-                pz = min.z;
-                nz = -1F;
+                continue;
             }
-            else if(along < w + d)
-            {
-                px = max.x;
-                pz = min.z + (along - w);
-                nx = 1F;
-            }
-            else if(along < 2F * w + d)
-            {
-                px = max.x - (along - w - d);
-                pz = max.z;
-                nz = 1F;
-            }
-            else
-            {
-                px = min.x;
-                pz = max.z - (along - 2F * w - d);
-                nx = -1F;
-            }
-            float out = -0.2F + age * (0.5F + random(seed, 5) * 1.0F);
-            float x = px + nx * out;
-            float z = pz + nz * out;
-            float y = min.y + random(seed, 4) * h + age * (0.3F + random(seed, 6) * 0.6F);
-            float size = (0.025F + random(seed, 7) * 0.06F) * (float)Math.sin(age * Math.PI);
-            if(size > 0.004F)
-            {
-                cube(consumer, pose, hologram, x, y, z, size, u0, u1, v0, v1, encodedRadius);
-            }
-        }
-    }
-
-    private static void cube(com.mojang.blaze3d.vertex.VertexConsumer consumer, PoseStack.Pose pose, HologramRenderer.Hologram hologram,
-                             float x, float y, float z, float half, float u0, float u1, float v0, float v1, int encodedRadius)
-    {
-        float a = x - half, b = x + half, c = y - half, e = y + half, f = z - half, g = z + half;
-        float[][] faces = {
-                { a, c, f, b, c, f, b, e, f, a, e, f }, //north
-                { b, c, g, a, c, g, a, e, g, b, e, g }, //south
-                { a, c, g, a, c, f, a, e, f, a, e, g }, //west
-                { b, c, f, b, c, g, b, e, g, b, e, f }, //east
-                { a, e, f, b, e, f, b, e, g, a, e, g }, //up
-                { a, c, g, b, c, g, b, c, f, a, c, f }, //down
-        };
-        float[] us = { u0, u1, u1, u0 };
-        float[] vs = { v1, v1, v0, v0 };
-        for(float[] face : faces)
-        {
-            for(int k = 0; k < 4; k++)
-            {
-                hologram.vertex(consumer, pose, face[k * 3], face[k * 3 + 1], face[k * 3 + 2], us[k], vs[k], 0xFFFFFFFF, k, encodedRadius);
-            }
+            nx /= length;
+            ny /= length;
+            nz /= length;
+            int colour = (int)(150 + random(seed, i + 97) * 105) << 24 | 0x6CF0FF;
+            lines.addVertex(pose, from.x, from.y, from.z).setColor(colour).setNormal(pose, nx, ny, nz);
+            lines.addVertex(pose, tx, ty, tz).setColor(colour).setNormal(pose, nx, ny, nz);
         }
     }
 
@@ -483,7 +526,9 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         return (h >>> 8) / (float)(1 << 24);
     }
 
-    /** The room laid around the cube's block: where the scanner stood goes there, turned the way the player faced. */
+    // ---- The scanned ball ----
+
+    /** The ball laid round the cube's block: where the scanner stood goes there, turned the way the player faced. */
     private HologramRenderer.Hologram hologram(ClientLevel level, State state, HoloClient.ClientProjection projection)
     {
         CubeScan scan = state.scan;
@@ -495,8 +540,10 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
             {
                 holograms.clear();
             }
-            HologramRenderer.Placement placement = new HologramRenderer.Placement(scan.originX() + 0.5F, scan.originY(), scan.originZ() + 0.5F, state.turn, 1F, new Vec3(0.5D, 0D, 0.5D));
-            HologramRenderer.Hologram hologram = HologramRenderer.buildMesh(level, projection, placement, null, WAVE_ORIGIN, state.anchor, true);
+            HologramRenderer.Placement placement = new HologramRenderer.Placement(scan.originX() + 0.5F, scan.originY(), scan.originZ() + 0.5F, state.turn,
+                    HoloSphere.SCALE, new Vec3(0.5D, 0D, 0.5D));
+            HologramRenderer.Hologram hologram = HologramRenderer.buildMesh(level, projection, placement, null, WAVE_ORIGIN, state.anchor, true,
+                    HoloSphere.SCAN_RADIUS + 0.5F, SimulatedSky.scannedDaylight(scan));
             entry = new Entry(key, hologram);
             holograms.put(state.entityId, entry);
         }

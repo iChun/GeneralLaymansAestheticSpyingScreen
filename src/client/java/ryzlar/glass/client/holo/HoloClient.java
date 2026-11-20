@@ -21,7 +21,10 @@ import ryzlar.glass.GlassRegistry;
 import ryzlar.glass.holo.HoloNetworking;
 import ryzlar.glass.holo.ProjectionRef;
 
+import net.minecraft.nbt.CompoundTag;
+
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -30,8 +33,13 @@ import java.util.Map;
  */
 public final class HoloClient
 {
-    /** A projection's blocks: x fastest, then z, then y. */
-    public record ClientProjection(String id, int sizeX, int sizeY, int sizeZ, BlockState[] blocks)
+    /**
+     * A projection's blocks: x fastest, then z, then y. A holo cube's scan also has its block entities and entities (as
+     * saved, each with its place in the box) and each block's light (block light times 16 plus sky light; empty for a
+     * scanner's crystal).
+     */
+    public record ClientProjection(String id, int sizeX, int sizeY, int sizeZ, BlockState[] blocks, List<CompoundTag> blockEntities,
+                                   List<CompoundTag> entities, int[] light)
     {
         public BlockState get(int x, int y, int z)
         {
@@ -40,6 +48,20 @@ public final class HoloClient
                 return net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
             }
             return blocks[(y * sizeZ + z) * sizeX + x];
+        }
+
+        /** The scanned light here (block light times 16 plus sky light); full daylight where none was kept. */
+        public int light(int x, int y, int z)
+        {
+            if(light.length == 0)
+            {
+                return 15;
+            }
+            if(x < 0 || y < 0 || z < 0 || x >= sizeX || y >= sizeY || z >= sizeZ)
+            {
+                return 15;
+            }
+            return light[(y * sizeZ + z) * sizeX + x];
         }
     }
 
@@ -57,7 +79,6 @@ public final class HoloClient
     public static void init()
     {
         SimulatedSky.init();
-        Panoramas.init();
         ClientPlayNetworking.registerGlobalReceiver(HoloNetworking.ProjectionBlocks.TYPE, (payload, context) -> {
             BlockState[] palette = new BlockState[payload.palette().size()];
             for(int i = 0; i < palette.length; i++)
@@ -70,8 +91,17 @@ public final class HoloClient
                 int index = payload.blocks().get(i);
                 blocks[i] = index >= 0 && index < palette.length ? palette[index] : net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
             }
-            projections.put(payload.id(), new ClientProjection(payload.id(), payload.sizeX(), payload.sizeY(), payload.sizeZ(), blocks));
+            HoloNetworking.ProjectionExtras extras = payload.extras();
+            int[] light = extras.light().stream().mapToInt(Integer::intValue).toArray();
+            projections.put(payload.id(), new ClientProjection(payload.id(), payload.sizeX(), payload.sizeY(), payload.sizeZ(), blocks,
+                    List.copyOf(extras.blockEntities()), List.copyOf(extras.entities()), light));
         });
+        //A simulation's ground is stood on here as on the server (see HoloBubbles), once the scan's blocks are here.
+        ryzlar.glass.holo.HoloCubeEntity.clientBlocks = id -> {
+            ClientProjection projection = projection(id);
+            return projection == null ? null : projection::get;
+        };
+        SimulationView.init();
 
         BlockEntityRenderers.register(GlassRegistry.HOLO_PROJECTOR_BE, HologramRenderer::new);
         net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(GlassRegistry.HOLO_CUBE_ENTITY, HoloCubeRenderer::new);
@@ -85,6 +115,10 @@ public final class HoloClient
             if(stack.is(GlassRegistry.HOLO_CUBE))
             {
                 ryzlar.glass.holo.CubeScan scan = stack.get(GlassRegistry.CUBE_SCAN);
+                if(scan != null && !scan.isCurrent())
+                {
+                    scan = null; //an old room scan: it has to scan again
+                }
                 lines.add(scan == null ? Component.translatable("glass.tooltip.cube.empty").withStyle(ChatFormatting.GRAY)
                         : Component.translatable("glass.tooltip.cube.scan", scan.sizeX(), scan.sizeY(), scan.sizeZ()).withStyle(ChatFormatting.AQUA));
                 if(scan != null && scan.hasSky())
@@ -111,7 +145,7 @@ public final class HoloClient
     public static void reset()
     {
         SimulatedSky.reset();
-        Panoramas.reset();
+        SimulationView.reset();
         projections.clear();
         requested.clear();
         previewBox = null;

@@ -33,22 +33,21 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * A holo cube set down on the ground. Without a scan, right-click it and it scans the room around it: it rises, and a
- * wave of light runs out over the room's walls, floor and ceiling from it (see the client's ScanEffect); once the wave
- * has been everywhere, the room is stored in the cube. With a scan, right-click it and it projects the room 1:1 around
- * itself, as a solid simulation you can walk around in: the block it scanned from is the cube's own block, turned the
- * way the player who set it down was facing. Right-click again to switch it off; sneak + right-click (or hit it) to pick
- * it up, scan and all.
+ * A holo cube set down on the ground. Without a scan, right-click it and it scans the ball of the world round it (see
+ * {@link HoloSphere}): it rises, a holo grid grows out of it, and everything inside falls apart into glowing pixels and
+ * comes back together (see the client's ScanEffect); then the ball is stored in the cube: every block, what is in the
+ * chests and on the signs, the animals and mobs, and the sky. With a scan, right-click it and a glowing bubble grows out
+ * of it with the scan inside, shrunk to two thirds: the block it scanned from is on the cube's own block, turned the way
+ * the player who set it down was facing. The scan is a picture over the real world, which stays as it is; its ground can
+ * be stood on where the real world is empty, the rest walked through (see {@link HoloBubbles}). Right-click again to
+ * switch it off; sneak + right-click (or hit it) to pick it up, scan and all.
  */
 public class HoloCubeEntity extends Entity
 {
-    /** How fast the nano wave spreads over the room, in blocks per tick: slower than screens, to watch the room build. */
+    /** How fast the nano wave (and the bubble) grows, in blocks per tick: slow, to watch the place build. */
     public static final float WAVE_SPEED = 0.12F;
-    /** How fast the scan's light runs out over a big room, in blocks per tick (a small room is scanned more slowly). */
-    public static final float SCAN_SPEED = 0.2F;
-    /** A scan takes at least, and at most, this long (ticks). */
-    private static final int MIN_SCAN_TICKS = 50;
-    private static final int MAX_SCAN_TICKS = 180;
+    /** How long a scan takes (ticks). */
+    public static final int SCAN_TICKS = 100;
     /** How often the scan pings, in ticks. */
     private static final int SWEEP_TICKS = 22;
     /** How long picking it up takes while it projects (the room shrinks back into it first), in ticks. */
@@ -61,11 +60,8 @@ public class HoloCubeEntity extends Entity
     private static final EntityDataAccessor<ItemStack> ITEM = SynchedEntityData.defineId(HoloCubeEntity.class, EntityDataSerializers.ITEM_STACK);
 
     private int packTicks;
-    /** Server: the room being scanned, how long the scan has run and will run, and who started it. */
-    @Nullable
-    private RoomScan.Room scanRoom;
+    /** Server: how long the scan has run, and who started it. */
     private int scanAge;
-    private int scanTicks;
     @Nullable
     private UUID scanner;
 
@@ -73,19 +69,20 @@ public class HoloCubeEntity extends Entity
     public long clientOnStart = Long.MIN_VALUE / 2;
     public long clientOffStart = Long.MIN_VALUE / 2;
     public float clientOffRadius;
-    /** Client: how far the room reaches from the cube, set by the renderer. */
-    public float clientReach = 16F;
-    /** Client: when the scan started and ended, and the room it runs over (worked out here from the client's world). */
+    /** Client: when the scan started and ended, and the faces of the ball it runs over (from the client's world). */
     public long clientScanStart = Long.MIN_VALUE / 2;
     public long clientScanEnd = Long.MIN_VALUE / 2;
     @Nullable
-    public RoomScan.Room clientRoom;
-    private float clientScanSpeed = SCAN_SPEED;
-    /** Client: the scan this cube held when last seen (to notice a scan it has just finished). */
+    public it.unimi.dsi.fastutil.longs.LongList clientSurfaces;
+
+    /** The scanned blocks this cube's simulation stands on (looked up once per scan), and the scan they are of. */
     @Nullable
-    private String clientSeenScan;
-    /** Client: told when a cube this client watched scanning has its scan (to take its panorama, see the client's Panoramas). */
-    public static java.util.function.Consumer<HoloCubeEntity> onClientScanDone = cube -> {};
+    private HoloBubbles.ScannedBlocks bubbleBlocks;
+    @Nullable
+    private String bubbleScan;
+    private boolean inBubbles;
+    /** Client: the scanned blocks of a scan, once they are here (see HoloClient); null while they are on their way. */
+    public static java.util.function.Function<String, HoloBubbles.ScannedBlocks> clientBlocks = id -> null;
 
     public HoloCubeEntity(EntityType<? extends HoloCubeEntity> type, Level level)
     {
@@ -144,17 +141,22 @@ public class HoloCubeEntity extends Entity
         return entityData.get(TURN);
     }
 
+    /** The scan it holds; an old room scan does not count (it has to scan again). */
     @Nullable
     public CubeScan scan()
     {
-        return entityData.get(ITEM).get(GlassRegistry.CUBE_SCAN);
+        CubeScan scan = entityData.get(ITEM).get(GlassRegistry.CUBE_SCAN);
+        return scan != null && scan.isCurrent() ? scan : null;
     }
+
+    /** How far the bubble reaches when it has grown all the way: its wall, and a little past it. */
+    public static final float FULL_RADIUS = HoloSphere.BUBBLE_RADIUS + 0.5F;
 
     /** Client: how far the wave has spread now (growing while on, shrinking back after it went off; 0 when done). */
     public float waveRadius(float partialTick)
     {
         long now = level().getGameTime();
-        float full = clientReach + 2F;
+        float full = FULL_RADIUS;
         if(projecting())
         {
             return Math.min(full, (now - clientOnStart + partialTick) * WAVE_SPEED);
@@ -169,23 +171,11 @@ public class HoloCubeEntity extends Entity
         return clientOffRadius * (1F - eased);
     }
 
-    /** Client: how far the scan's light has run out from the cube. */
-    public float scanRadius(float partialTick)
+    /** Client: how far into the scan it is (0..1), going on to 1 once it is done. */
+    public float scanProgress(float partialTick)
     {
         long end = scanning() ? level().getGameTime() : clientScanEnd;
-        return Math.max(0F, (end - clientScanStart + (scanning() ? partialTick : 0F)) * clientScanSpeed);
-    }
-
-    /** How long a scan of a room this big takes (ticks): its light reaches the far end a little before it is done. */
-    private static int scanTicksFor(float reach)
-    {
-        return Mth.clamp((int)Math.ceil(reach / SCAN_SPEED) + 10, MIN_SCAN_TICKS, MAX_SCAN_TICKS);
-    }
-
-    /** How fast the light runs in a room this big, so it takes the whole scan to get to the far end. */
-    private static float scanSpeedFor(float reach)
-    {
-        return (reach + 0.5F) / Math.max(1, scanTicksFor(reach) - 10);
+        return Math.clamp((end - clientScanStart + (scanning() ? partialTick : 0F)) / SCAN_TICKS, 0F, 1F);
     }
 
     @Override
@@ -205,28 +195,16 @@ public class HoloCubeEntity extends Entity
             }
             else
             {
-                clientOffRadius = Math.min(clientReach + 2F, (now - clientOnStart) * WAVE_SPEED);
+                clientOffRadius = Math.min(FULL_RADIUS, (now - clientOnStart) * WAVE_SPEED);
                 clientOffStart = now;
             }
-        }
-        else if(accessor == ITEM)
-        {
-            CubeScan scan = scan();
-            String id = scan == null ? null : scan.id();
-            if(id != null && !id.equals(clientSeenScan) && clientScanStart > Long.MIN_VALUE / 4 && now - clientScanStart < 20L * 30L)
-            {
-                clientSeenScan = id;
-                onClientScanDone.accept(this);
-            }
-            clientSeenScan = id;
         }
         else if(accessor == SCANNING)
         {
             if(scanning())
             {
                 clientScanStart = now;
-                clientRoom = RoomScan.find(level(), blockPosition());
-                clientScanSpeed = clientRoom == null ? SCAN_SPEED : scanSpeedFor(clientRoom.reach());
+                clientSurfaces = HoloSphere.surfaces(level(), blockPosition());
             }
             else
             {
@@ -250,12 +228,9 @@ public class HoloCubeEntity extends Entity
         {
             setDeltaMovement(Vec3.ZERO);
         }
+        updateBubble();
         if(level().isClientSide)
         {
-            if(scanning())
-            {
-                scanSparks();
-            }
             return;
         }
         if(entityData.get(PACKING) && ++packTicks >= PACK_TICKS)
@@ -263,99 +238,109 @@ public class HoloCubeEntity extends Entity
             pickUp(null);
             return;
         }
-        if(scanning() && ++scanAge >= scanTicks)
+        if(scanning() && ++scanAge >= SCAN_TICKS)
         {
             finishScan();
         }
         else if(scanning() && scanAge % SWEEP_TICKS == SWEEP_TICKS / 2)
         {
             //A sonar ping now and then, rising as the scan goes on.
-            level().playSound(null, getX(), getY(), getZ(), ryzlar.glass.GlassSounds.SCAN_SWEEP, SoundSource.NEUTRAL, 0.6F, 0.9F + 0.35F * scanAge / Math.max(1, scanTicks));
+            level().playSound(null, getX(), getY(), getZ(), ryzlar.glass.GlassSounds.SCAN_SWEEP, SoundSource.NEUTRAL, 0.6F, 0.9F + 0.35F * scanAge / SCAN_TICKS);
         }
     }
 
-    /** Client: sparks where the scan's light is running over the room. */
-    private void scanSparks()
+    /**
+     * Keeps this cube's simulation in {@link HoloBubbles}: there while it is switched on (and on the client, while its
+     * bubble still shrinks away), its ground to stand on only while switched on.
+     */
+    private void updateBubble()
     {
-        RoomScan.Room room = clientRoom;
-        if(room == null || room.surfaces().isEmpty())
+        CubeScan scan = scan();
+        boolean client = level().isClientSide;
+        boolean on = scan != null && !entityData.get(PACKING) && projecting();
+        if(scan == null || !(on || client && waveRadius(0F) > 0F))
+        {
+            dropBubble();
+            return;
+        }
+        if(bubbleBlocks == null || !scan.id().equals(bubbleScan))
+        {
+            bubbleBlocks = client ? clientBlocks.apply(scan.id()) : serverBlocks(scan.id());
+            bubbleScan = bubbleBlocks == null ? null : scan.id();
+            if(bubbleBlocks == null)
+            {
+                return; //its blocks are on their way (client) or gone
+            }
+        }
+        HoloBubbles.Bubble old = HoloBubbles.byId(level(), getId());
+        HoloBubbles.Bubble bubble = new HoloBubbles.Bubble(getId(), anchor(), turn(), scan.originX(), scan.originY(), scan.originZ(), bubbleBlocks, on);
+        if(old != null && old.solid == on && old.samePlace(bubble))
         {
             return;
         }
-        float radius = scanRadius(0F);
-        Vec3 centre = Vec3.atCenterOf(blockPosition());
-        DustParticleOptions dust = new DustParticleOptions(0x3CE6FF, 0.8F);
-        long[] keys = room.surfaces().toLongArray();
-        for(int i = 0, found = 0; i < 40 && found < 5; i++)
+        HoloBubbles.put(level(), bubble);
+        inBubbles = true;
+    }
+
+    private void dropBubble()
+    {
+        if(inBubbles)
         {
-            long key = keys[random.nextInt(keys.length)];
-            Vec3 at = Vec3.atCenterOf(BlockPos.of(key));
-            if(Math.abs(at.distanceTo(centre) - radius) < 0.8D)
-            {
-                //On the face towards the open space, roughly: pulled towards the cube.
-                Vec3 out = centre.subtract(at).normalize().scale(0.6D);
-                level().addParticle(dust, at.x + out.x, at.y + out.y, at.z + out.z, 0D, 0.01D, 0D);
-                found++;
-            }
+            inBubbles = false;
+            HoloBubbles.remove(level(), getId());
         }
     }
 
-    /** Starts scanning the room around the cube. */
+    @Nullable
+    private HoloBubbles.ScannedBlocks serverBlocks(String id)
+    {
+        if(!(level() instanceof ServerLevel serverLevel))
+        {
+            return null;
+        }
+        HoloProjectionData.Projection projection = HoloProjectionData.find(serverLevel.getServer(), id);
+        return projection == null ? null : projection::get;
+    }
+
+    /** Gone (picked up, unloaded with its chunk, or gone from the client): its simulation goes with it. */
+    @Override
+    public void onRemoval(RemovalReason reason)
+    {
+        super.onRemoval(reason);
+        dropBubble();
+    }
+
+    /** Starts scanning the ball round the cube. */
     private void startScan(Player player)
     {
         if(scanning() || projecting() || scan() != null || entityData.get(PACKING))
         {
             return;
         }
-        RoomScan.Room room = RoomScan.find(level(), blockPosition());
-        if(room == null)
-        {
-            if(player instanceof ServerPlayer serverPlayer)
-            {
-                GlassNetworking.reply(serverPlayer, GlassNetworkManager.Result.fail("glass.msg.scanNoRoom"));
-            }
-            return;
-        }
-        scanRoom = room;
         scanAge = 0;
-        scanTicks = scanTicksFor(room.reach());
         scanner = player.getUUID();
         entityData.set(SCANNING, true);
         level().playSound(null, getX(), getY(), getZ(), ryzlar.glass.GlassSounds.SCAN_START, SoundSource.NEUTRAL, 0.9F, 1F);
     }
 
-    /** The light has been everywhere: store the room in the cube. */
+    /** The ball has been taken apart and put back together: store it in the cube. */
     private void finishScan()
     {
-        RoomScan.Room room = scanRoom;
-        scanRoom = null;
         entityData.set(SCANNING, false);
-        if(room == null || !(level() instanceof ServerLevel serverLevel))
+        if(!(level() instanceof ServerLevel serverLevel))
         {
             return;
         }
-        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
-        int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
-        for(long key : room.blocks())
-        {
-            int x = BlockPos.getX(key), y = BlockPos.getY(key), z = BlockPos.getZ(key);
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            minZ = Math.min(minZ, z);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-            maxZ = Math.max(maxZ, z);
-        }
-        BlockPos corner = new BlockPos(minX, minY, minZ);
         String name = Component.translatable("glass.ui.cube.scanName").getString();
-        HoloProjectionData.Projection projection = HoloProjectionData.store(serverLevel, corner, maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1, room.blocks(), name);
-        BlockPos origin = blockPosition().subtract(corner);
+        HoloProjectionData.Projection projection = HoloProjectionData.storeBall(serverLevel, blockPosition(), name);
+        int r = HoloSphere.SCAN_RADIUS;
         ItemStack item = entityData.get(ITEM).copy();
-        //The sky over the room too (in a dimension that has one): the simulation shows it overhead.
+        //The sky over it too (in a dimension that has one): inside the simulation the whole sky is as it was.
         boolean sky = serverLevel.dimensionType().hasSkyLight() && !serverLevel.dimensionType().hasFixedTime();
         item.set(GlassRegistry.CUBE_SCAN, new CubeScan(projection.id(), projection.name(), projection.sizeX(), projection.sizeY(), projection.sizeZ(),
-                origin.getX(), origin.getY(), origin.getZ(), facingOf(getYRot()),
-                sky ? serverLevel.getDayTime() : CubeScan.NO_SKY, sky ? serverLevel.getRainLevel(1F) : 0F, sky ? serverLevel.getThunderLevel(1F) : 0F));
+                r, r, r, facingOf(getYRot()),
+                sky ? serverLevel.getDayTime() : CubeScan.NO_SKY, sky ? serverLevel.getRainLevel(1F) : 0F, sky ? serverLevel.getThunderLevel(1F) : 0F,
+                CubeScan.VERSION));
         entityData.set(ITEM, item);
         //Projected where it was scanned, the room lies right over itself.
         entityData.set(TURN, 0);
@@ -385,7 +370,6 @@ public class HoloCubeEntity extends Entity
         }
         if(scanning())
         {
-            scanRoom = null;
             entityData.set(SCANNING, false);
         }
         if(!projecting())

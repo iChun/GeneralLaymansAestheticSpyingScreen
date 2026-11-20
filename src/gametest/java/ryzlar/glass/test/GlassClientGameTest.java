@@ -722,7 +722,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             settle(singleplayer, context);
             context.waitTicks(20);
 
-            //Holo cube: set it down in a room and let it scan it, then set it down elsewhere to project the room 1:1.
+            //Holo cube: set it down in a room and let it scan the ball round it, then set it down elsewhere to project it 1:1.
             server.runCommand("fill 100 -61 -10 106 -56 -4 minecraft:stone_bricks hollow");
             server.runCommand("fill 103 -59 -10 104 -58 -10 minecraft:glass");
             server.runCommand("setblock 101 -60 -9 minecraft:bookshelf");
@@ -730,6 +730,10 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("setblock 105 -60 -9 minecraft:crafting_table");
             server.runCommand("setblock 105 -60 -5 minecraft:red_wool");
             server.runCommand("setblock 101 -60 -5 minecraft:gold_block");
+            //A chest with something in it, a sign, and a sheep: all go into the scan.
+            server.runCommand("setblock 101 -60 -7 minecraft:chest[facing=east]{Items:[{Slot:0b,id:\"minecraft:diamond\",count:3}]}");
+            server.runCommand("setblock 105 -59 -7 minecraft:oak_wall_sign[facing=west]{front_text:{messages:[\"GLASS\",\"\",\"\",\"\"]}}");
+            server.runCommand("summon minecraft:sheep 104.5 -60 -6.5 {NoAI:1b,Color:3}");
             server.runCommand("fill 112 -61 -24 140 -61 12 minecraft:white_concrete");
             server.runCommand("tp @p 103.5 -60 -5.5 180 20");
             settle(singleplayer, context);
@@ -758,19 +762,17 @@ public class GlassClientGameTest implements FabricClientGameTest
                 context.waitTicks(5);
                 scanned = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream().anyMatch(d -> d.scan() != null));
             }
-            check(scanned, "the cube scans the room around it");
+            check(scanned, "the cube scans the ball around it");
             float scanRain = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream()
                     .map(HoloCubeEntity::scan).filter(java.util.Objects::nonNull).findFirst().map(ryzlar.glass.holo.CubeScan::rain).orElse(0F));
             check(server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream()
                     .map(HoloCubeEntity::scan).anyMatch(scan -> scan != null && scan.skyTime() == 18000L)) && scanRain > 0F, "the scan keeps the sky: midnight, raining");
-            boolean panorama = false;
-            for(int i = 0; i < 60 && !panorama; i++)
-            {
-                context.waitTicks(5);
-                panorama = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream()
-                        .anyMatch(d -> d.scan() != null && ryzlar.glass.holo.PanoramaStore.has(s, d.scan().id())));
-            }
-            check(panorama, "the cube takes a 360 degree panorama and keeps it with the scan");
+            check(server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, room).stream()
+                    .map(HoloCubeEntity::scan).filter(java.util.Objects::nonNull)
+                    .map(scan -> ryzlar.glass.holo.HoloProjectionData.find(s, scan.id()))
+                    .anyMatch(p -> p != null && p.blockEntities().stream().anyMatch(t -> t.toString().contains("diamond"))
+                            && p.entities().stream().anyMatch(t -> t.toString().contains("sheep")))),
+                    "the scan keeps the chest's contents and the sheep");
             server.runCommand("time set noon");
             server.runCommand("weather clear");
             context.waitTicks(4);
@@ -792,7 +794,7 @@ public class GlassClientGameTest implements FabricClientGameTest
             });
             check(server.computeOnServer(s -> player(s).getMainHandItem().get(GlassRegistry.CUBE_SCAN) != null), "the cube is picked up with its scan");
 
-            //Set it down in the open and switch it on: the room builds up around it, slowly, as a solid simulation.
+            //Set it down in the open and switch it on: the bubble grows out of it, the scanned ball inside, 1:1.
             server.runCommand("tp @p 126.5 -60 7.5 180 0");
             settle(singleplayer, context);
             context.waitTicks(5);
@@ -817,14 +819,24 @@ public class GlassClientGameTest implements FabricClientGameTest
             //Inside, it is lit and rains as when it was scanned (midnight, rain), while the real world has a clear noon.
             check(context.computeOnClient(mc -> mc.level.getSkyDarken(1F) < 0.3F && Math.abs(mc.level.getRainLevel(1F) - scanRain) < 0.05F),
                     "inside the simulation the light and weather are the scanned ones");
-            //And the dome shows the scanned surroundings (through the window, and where the edge falls apart).
+            //Inside, the scanned floor can be stood on (the real world is untouched), and the scanned chest can be looked into.
+            check(context.computeOnClient(mc -> {
+                        var scannedGround = ryzlar.glass.holo.HoloBubbles.groundAt(mc.level, new BlockPos(126, -61, 4));
+                        return scannedGround != null && !scannedGround.isEmpty() &&mc.level.getBlockState(new BlockPos(126, -61, 4)).is(net.minecraft.world.level.block.Blocks.WHITE_CONCRETE);
+                    }), "inside the bubble the scanned floor is there, over the untouched real one");
+            boolean chestOpened = context.computeOnClient(mc -> mc.level.getEntitiesOfClass(HoloCubeEntity.class, new net.minecraft.world.phys.AABB(120, -62, -2, 132, -55, 10)).stream()
+                    .anyMatch(ryzlar.glass.client.holo.SimulationView::openFirstContainer) && mc.screen instanceof ryzlar.glass.client.holo.HoloContainerScreen);
+            check(chestOpened, "the scanned chest opens read-only");
+            context.waitTicks(10);
+            context.takeScreenshot("cube_chest_view");
+            context.setScreen(() -> null);
             for(int yaw : new int[] { 0, 90, 180, 270 })
             {
                 server.runCommand("tp @p 126.5 -60 4.5 " + yaw + " -5");
                 context.waitTicks(4);
-                context.takeScreenshot("cube_dome_" + yaw);
+                context.takeScreenshot("cube_inside_" + yaw);
             }
-            //From outside, a barrier round it shows a simulation is running there.
+            //From outside, the glowing bubble with the scan in blue inside it shows a simulation is running there.
             server.runCommand("tp @p 133.5 -59 12.5 135 15");
             context.waitTicks(10);
             context.takeScreenshot("cube_barrier_outside");
@@ -988,8 +1000,8 @@ public class GlassClientGameTest implements FabricClientGameTest
                 context.waitTicks(15);
                 check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(92, -59, 20)).isAir()), "unpowered, the hard light goes");
             }
-            //An outdoor simulation, scanned at dusk in the rain and run at noon in the dry: from inside, the real sky at the
-            //scanned time and weather over the scanned land, and the edge falling apart into blue at the foot of the dome.
+            //An outdoor simulation, scanned at dusk in the rain and run at noon in the dry: from inside, the sky at the
+            //scanned time and weather over the scanned land and the real world beyond the bubble's wall.
             server.runCommand("weather rain");
             server.runCommand("time set 12600");
             server.runCommand("tp @p 95.5 -60 19.5 0 30");

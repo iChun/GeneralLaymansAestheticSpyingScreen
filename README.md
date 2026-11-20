@@ -15,11 +15,15 @@ This fork adds a few things on top:
 - **Scene Selector.** Switches a screen between channels, with a wipe across the glass.
 - **Hologram kit.** The **Holo Scanner** scans an area into a **Projection Crystal**; a **Holo Projector** with
   **Holo Emitters** projects it as a hologram (classic, blue or solid).
-- **Holo Cube.** Set it down and right-click it: it scans the room around it with a wave of light. Set it down
-  anywhere and right-click it again: the room is projected 1:1 as a solid simulation you can walk into, with a
-  blue, dissolving edge and a glowing barrier round it, so everyone can see a simulation is running. The scan reaches
-  48 blocks up and takes a 360 degree panorama (1024 px a side) of the sky and land around it, shared through the
-  server: inside the simulation that panorama surrounds you, and the light and rain are as when it was scanned.
+- **Holo Cube.** Set it down and right-click it: it digitizes the ball of the world around it (fifteen blocks
+  across): a holo grid grows out of it and everything inside falls apart into glowing pixels and comes back together.
+  Everything is kept: the blocks and ground, what is in the chests, signs, banners and beds, item frames and armor
+  stands, the animals and mobs, and the time and weather. Set it down anywhere and right-click it again: a glowing
+  bubble grows out of it with the scan inside, shrunk to ten blocks across. From outside you see it in blue through
+  the bubble's wall; step in and it is in its real colours, under the scanned sky. The simulation is only a picture
+  over the real world, which is never touched: where the real world is empty you can stand on the scan's ground,
+  you walk straight through the rest (walls, trees, furniture), which splashes glowing pixels as you pass, and you
+  can look into the scanned chests by using them. The animals and mobs stand frozen as they were.
 - **Gadgets** (still in development, switched off in releases: set `GadgetFeature.ENABLED` to try them).
   - **GLASS Tablet:** a handheld screen that shows a channel's camera live.
   - **Hard-Light Emitter:** fills an opening with a wall of solid light that stops players, mobs and arrows,

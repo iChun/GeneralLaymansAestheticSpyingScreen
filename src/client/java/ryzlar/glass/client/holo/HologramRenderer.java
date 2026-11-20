@@ -191,7 +191,19 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
     static Hologram buildMesh(ClientLevel level, HoloClient.ClientProjection projection, Placement placement, @Nullable List<Vec3> sources, Vec3 waveOrigin, BlockPos tintPos,
                               boolean simulationEdge)
     {
-        ModelView view = new ModelView(level, projection, tintPos, 0xF000F0);
+        return buildMesh(level, projection, placement, sources, waveOrigin, tintPos, simulationEdge, 0F, -1F);
+    }
+
+    /**
+     * The same, for a holo cube's ball: {@code ballRadius} (if over 0) puts the edge that falls apart round the ball (from
+     * the pivot block's centre) instead of round the box; {@code daylight} (if 0 or more) lights it with the light it was
+     * scanned in (each block's own, the sky's at that daylight), baked into its colours.
+     */
+    static Hologram buildMesh(ClientLevel level, HoloClient.ClientProjection projection, Placement placement, @Nullable List<Vec3> sources, Vec3 waveOrigin, BlockPos tintPos,
+                              boolean simulationEdge, float ballRadius, float daylight)
+    {
+        boolean scannedLight = daylight >= 0F && projection.light().length > 0;
+        ModelView view = new ModelView(level, projection, tintPos, 0xF000F0, scannedLight);
         Capture capture = new Capture();
         Hologram hologram = new Hologram(waveOrigin);
         Minecraft mc = Minecraft.getInstance();
@@ -261,14 +273,31 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
                         for(int c = 0; c < 4; c++)
                         {
                             int alpha = 255;
-                            if(simulationEdge)
+                            float cx = capture.x(q + c), cy = capture.y(q + c), cz = capture.z(q + c);
+                            if(simulationEdge && ballRadius > 0F)
+                            {
+                                //How far in from the ball's surface, as 0..254 over the edge band (255: no edge here).
+                                float dx = cx - placement.pivotX(), dy = cy - placement.pivotY() - 0.5F, dz = cz - placement.pivotZ();
+                                float edge = (ballRadius - (float)Math.sqrt(dx * dx + dy * dy + dz * dz)) * scale;
+                                alpha = Math.clamp(Math.round(edge / EDGE_BAND * 254F), 0, 255);
+                            }
+                            else if(simulationEdge)
                             {
                                 //How far in from the room's walls, as 0..254 over the edge band (255: no edge here).
-                                float cx = capture.x(q + c), cz = capture.z(q + c);
                                 float edge = Math.min(Math.min(cx, projection.sizeX() - cx), Math.min(cz, projection.sizeZ() - cz)) * scale;
                                 alpha = Math.clamp(Math.round(edge / EDGE_BAND * 254F), 0, 255);
                             }
-                            hologram.add(corners[c], capture.u(q + c), capture.v(q + c), (capture.colour(q + c) & 0xFFFFFF) | alpha << 24, c);
+                            int colour = capture.colour(q + c);
+                            if(scannedLight)
+                            {
+                                //The light it had: its block light, or the sky's at the scanned daylight, as the block renderer
+                                //smoothed it over the face.
+                                int light = capture.light(q + c);
+                                float block = (light & 0xFFFF) / 240F, sky = (light >>> 16) / 240F;
+                                float shade = 0.12F + 0.88F * Math.clamp(Math.max(block, sky * daylight), 0F, 1F);
+                                colour = (int)(((colour >> 16) & 0xFF) * shade) << 16 | (int)(((colour >> 8) & 0xFF) * shade) << 8 | (int)((colour & 0xFF) * shade);
+                            }
+                            hologram.add(corners[c], capture.u(q + c), capture.v(q + c), (colour & 0xFFFFFF) | alpha << 24, c);
                         }
                     }
                 }
@@ -381,14 +410,17 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
         private final BlockPos tintPos;
         private final int blockLight;
         private final int skyLight;
+        /** Lit as scanned (a holo cube's ball): each block's own light, kept with the scan. */
+        private final boolean scannedLight;
 
-        ModelView(ClientLevel level, HoloClient.ClientProjection projection, BlockPos tintPos, int lightColour)
+        ModelView(ClientLevel level, HoloClient.ClientProjection projection, BlockPos tintPos, int lightColour, boolean scannedLight)
         {
             this.level = level;
             this.projection = projection;
             this.tintPos = tintPos;
             this.blockLight = (lightColour & 0xFFFF) >> 4;
             this.skyLight = (lightColour >> 16 & 0xFFFF) >> 4;
+            this.scannedLight = scannedLight;
         }
 
         @Override
@@ -413,13 +445,18 @@ public class HologramRenderer implements BlockEntityRenderer<HoloProjectorBlockE
         @Override
         public int getBrightness(LightLayer layer, BlockPos pos)
         {
+            if(scannedLight)
+            {
+                int light = projection.light(pos.getX(), pos.getY(), pos.getZ());
+                return layer == LightLayer.SKY ? light & 15 : light >> 4;
+            }
             return layer == LightLayer.SKY ? skyLight : blockLight;
         }
 
         @Override
         public int getRawBrightness(BlockPos pos, int darkening)
         {
-            return Math.max(skyLight - darkening, blockLight);
+            return Math.max(getBrightness(LightLayer.SKY, pos) - darkening, getBrightness(LightLayer.BLOCK, pos));
         }
 
         @Override
