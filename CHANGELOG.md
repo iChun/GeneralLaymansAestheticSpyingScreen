@@ -27,6 +27,9 @@ Needs Fabric Loader 0.17+ and Fabric API, on both the client and the server.
   banners, beds, frames, armor stands, mobs, light, time and weather) and projects it as a walk-in miniature in a
   glowing bubble. The real world is never touched; you can stand on the scan's ground where the world is empty, walk
   through the rest, and look into the scanned chests.
+- **GLASS Tome**: an in-game guide with live 3D scenes, recipes and links, given once on first joining; press G over a
+  GLASS item to open its page.
+- GLASS's own creative tab.
 - A sci-fi look for every GLASS screen, glowing edges and a nano grid on screen backs and cloak field insides, GLASS
   sounds, and Blockbench block models.
 - **Sodium and Iris**: screens and cloaks are drawn with Sodium's renderer too (Sodium 0.7, Iris without a shader
