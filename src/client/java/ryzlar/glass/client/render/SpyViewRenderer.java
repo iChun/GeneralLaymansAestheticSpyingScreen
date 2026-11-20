@@ -38,8 +38,8 @@ import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import net.minecraft.world.phys.AABB;
 import ryzlar.glass.Glass;
-import ryzlar.glass.GlassConfig;
 import ryzlar.glass.client.TerminalPlacement;
 import ryzlar.glass.client.mixin.GameRendererAccessor;
 import ryzlar.glass.client.mixin.LevelRendererAccessor;
@@ -70,6 +70,47 @@ public final class SpyViewRenderer
 
     /** Views drawn per frame at most. Each one costs about as much as drawing the world again. */
     private static final int MAX_VIEWS_PER_FRAME = 6;
+    /**
+     * Cloak views drawn per frame at most (within {@link #MAX_VIEWS_PER_FRAME}). A cloak hides a base from everyone
+     * around it, so with many cloaks about this keeps the cost fixed: the rest show their last image until their turn.
+     */
+    private static final int CLOAK_VIEWS_PER_FRAME = 3;
+
+    /**
+     * How a cloak's view is drawn, by how far away the cloak is and how much of the screen it takes up: the share of its
+     * on-screen size it is drawn at, and every how many frames.
+     */
+    enum Tier
+    {
+        NEAR(0.67F, 1),
+        MID(0.5F, 2),
+        FAR(0.33F, 8);
+
+        final float scale;
+        final int interval;
+
+        Tier(float scale, int interval)
+        {
+            this.scale = scale;
+            this.interval = interval;
+        }
+    }
+
+    /** Nearer than this (blocks to the cloak's glass), a cloak is drawn every frame at its best. */
+    private static final double NEAR_DISTANCE = 32D;
+    /** Nearer than this, a cloak is drawn every other frame; further, a few times a second. */
+    private static final double MID_DISTANCE = 96D;
+    /** Taking up more than this share of the screen, a cloak is drawn every frame at its best wherever it is. */
+    private static final float NEAR_COVERAGE = 0.2F;
+    /**
+     * Room left round a cloak's part of the screen, as a share of its size: an image drawn a few frames ago must still
+     * cover the glass after the head has turned a little.
+     */
+    private static final float[] RECT_MARGIN = { 0.04F, 0.1F, 0.25F };
+    /** The size of a cloak's image in pixels is rounded up to this, so it is not made anew every time it grows a pixel. */
+    private static final int TARGET_STEP = 32;
+    /** A cropped view's culling always takes in the screen this far round its middle (see render). */
+    private static final float CULL_CENTRE = 0.25F;
     /** Suffix of a view that is being replaced: it keeps drawing until the new view has wiped over it. */
     public static final String OLD_SUFFIX = "#old";
     /** Frames a view is kept after the glass stops asking for it. */
@@ -119,6 +160,46 @@ public final class SpyViewRenderer
         Vector4f fogColor = new Vector4f(0F, 0F, 0F, 1F);
         double prevCamX = Double.MIN_VALUE, prevCamY = Double.MIN_VALUE, prevCamZ = Double.MIN_VALUE;
         double prevCamRotX = Double.MIN_VALUE, prevCamRotY = Double.MIN_VALUE;
+
+        // ---- A cloak's view, drawn only where the cloak is on screen and, further away, not every frame ----
+
+        /** The glass asked for it as a steady cloak (not switching off or wiping over another feed) this frame. */
+        long steadyFrame = -1;
+        /** The last image covers only {@link #rect} of the screen, and is sampled through {@link #sampleMatrix}. */
+        boolean cropped;
+        /** Frame the last image was drawn. */
+        long drawnFrame = Long.MIN_VALUE;
+        /** Where the last image is on screen: min x, min y, max x, max y in normalized device coordinates. */
+        final float[] rect = new float[4];
+        /** The last image's projection (unclipped, cropped to {@link #rect}) times its view rotation. */
+        final Matrix4f drawnViewProjection = new Matrix4f();
+        /** Where the camera was for the last image. */
+        Vec3 drawnCamera = Vec3.ZERO;
+        /** This frame's quality and need, worked out before drawing (see {@link #plan}). */
+        Tier tier = Tier.NEAR;
+        float priority;
+        /** Frame this was planned to be drawn cropped (see {@link #plan}). */
+        long plannedFrame = -1;
+        final float[] wantedRect = new float[4];
+
+        boolean isSteadyCloak(long frame, boolean switchingOff)
+        {
+            return placement != null && placement.cloak && steadyFrame >= frame - 1 && !switchingOff;
+        }
+
+        /**
+         * Takes a point of the glass, relative to the camera now, to where it is in the last image (see glass_screen.vsh).
+         * All zero while another view is being drawn: the glass seen in there is sampled in screen space.
+         */
+        Matrix4f sampleMatrix()
+        {
+            if(INSTANCE.rendering != null)
+            {
+                return new Matrix4f().zero();
+            }
+            Vec3 now = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+            return new Matrix4f(drawnViewProjection).translate((float)(now.x - drawnCamera.x), (float)(now.y - drawnCamera.y), (float)(now.z - drawnCamera.z));
+        }
 
         SpyView(String channel, int index)
         {
@@ -216,6 +297,16 @@ public final class SpyViewRenderer
     @Nullable
     public ResourceLocation request(TerminalPlacement placement)
     {
+        return request(placement, false);
+    }
+
+    /**
+     * The same; {@code steady}: a cloak's side shown as it is (not wiping over another feed), which may then be drawn
+     * only where the cloak is on screen and, further away, not every frame (draw it with {@link #cloakScreen}).
+     */
+    @Nullable
+    public ResourceLocation request(TerminalPlacement placement, boolean steady)
+    {
         SpyView view = views.get(placement.channel);
         if(view == null)
         {
@@ -224,7 +315,26 @@ public final class SpyViewRenderer
         }
         view.placement = placement;
         view.requestedFrame = frame;
+        if(steady)
+        {
+            view.steadyFrame = frame;
+        }
         return view.rendered ? view.textureId : null;
+    }
+
+    /**
+     * How to draw a steady cloak side's image (see {@link #request(TerminalPlacement, boolean)}): with where its last
+     * image was drawn from, if that was only part of the screen. Null: an ordinary screen-space image.
+     */
+    @Nullable
+    public net.minecraft.client.renderer.RenderType cloakScreen(String channel, boolean cull)
+    {
+        SpyView view = views.get(channel);
+        if(view == null || !view.rendered || !view.cropped)
+        {
+            return null;
+        }
+        return GlassRenderTypes.cloakScreen(view.textureId, view::sampleMatrix, cull);
     }
 
     /** The last image drawn for this screen, without asking for a new one (for the switch-off animation). */
@@ -256,9 +366,10 @@ public final class SpyViewRenderer
             return;
         }
 
-        int drawn = 0;
         Iterator<SpyView> ite = views.values().iterator();
         List<SpyView> toRender = new ArrayList<>();
+        List<SpyView> cloaks = new ArrayList<>();
+        Matrix4f mainViewProjection = new Matrix4f(mainProjection).mul(new Matrix4f().rotation(mainCamera.rotation().conjugate(new Quaternionf())));
         while(ite.hasNext())
         {
             SpyView view = ite.next();
@@ -273,11 +384,31 @@ public final class SpyViewRenderer
                 continue;
             }
             boolean wanted = view.requestedFrame >= thisFrame - 1 && view.placement != null && view.placement.isValid();
-            if((wanted || switchingOff) && drawn < MAX_VIEWS_PER_FRAME)
+            if(!wanted && !switchingOff)
             {
-                toRender.add(view);
-                drawn++;
+                continue;
             }
+            if(view.isSteadyCloak(thisFrame, switchingOff) && plan(view, thisFrame, mainCamera.getPosition(), mainViewProjection))
+            {
+                cloaks.add(view);
+            }
+            else if(!view.isSteadyCloak(thisFrame, switchingOff))
+            {
+                //A screen, or a cloak switching off or wiping over another feed: drawn whole, every frame.
+                view.cropped = false;
+                toRender.add(view);
+            }
+        }
+        //The cloaks most in need first: an image that no longer covers the glass, then the nearest and biggest on screen
+        //by how overdue they are. The rest keep their last image this frame.
+        cloaks.sort((a, b) -> Float.compare(b.priority, a.priority));
+        for(int i = 0; i < cloaks.size() && i < CLOAK_VIEWS_PER_FRAME; i++)
+        {
+            toRender.add(cloaks.get(i));
+        }
+        if(toRender.size() > MAX_VIEWS_PER_FRAME)
+        {
+            toRender = toRender.subList(0, MAX_VIEWS_PER_FRAME);
         }
         for(SpyView view : toRender)
         {
@@ -293,8 +424,114 @@ public final class SpyViewRenderer
         }
     }
 
+    /**
+     * A steady cloak side: works out how it is drawn this frame (its {@link Tier}, and the part of the screen its glass
+     * takes up, with room round it), and whether it needs drawing: never drawn, its last image no longer covering the
+     * glass, or due by its tier. Its priority says how much (see renderViews). False: keep the last image.
+     */
+    private static boolean plan(SpyView view, long frame, Vec3 eye, Matrix4f mainViewProjection)
+    {
+        float[] tight = new float[4];
+        AABB box = view.placement.screenBox();
+        if(box == null || !screenRect(box, eye, mainViewProjection, tight))
+        {
+            return false; //no glass yet, or none of it on screen: nothing to show
+        }
+        float coverage = (tight[2] - tight[0]) * (tight[3] - tight[1]) / 4F;
+        double distance = Math.sqrt(box.distanceToSqr(eye));
+        view.tier = coverage > NEAR_COVERAGE || distance < NEAR_DISTANCE ? Tier.NEAR : distance < MID_DISTANCE ? Tier.MID : Tier.FAR;
+        float margin = RECT_MARGIN[view.tier.ordinal()];
+        float mx = (tight[2] - tight[0]) * margin + 0.02F, my = (tight[3] - tight[1]) * margin + 0.02F;
+        float[] r = view.wantedRect;
+        r[0] = Math.max(-1F, tight[0] - mx);
+        r[1] = Math.max(-1F, tight[1] - my);
+        r[2] = Math.min(1F, tight[2] + mx);
+        r[3] = Math.min(1F, tight[3] + my);
+        view.plannedFrame = frame;
+        if(!view.rendered || !view.cropped)
+        {
+            view.priority = 1000F;
+            return true;
+        }
+        float[] last = view.rect;
+        if(tight[0] < last[0] || tight[1] < last[1] || tight[2] > last[2] || tight[3] > last[3])
+        {
+            view.priority = 500F + coverage; //the head has turned past the last image's edge
+            return true;
+        }
+        long age = frame - view.drawnFrame;
+        if(age < view.tier.interval)
+        {
+            view.plannedFrame = -1;
+            return false;
+        }
+        view.priority = (float)age / view.tier.interval + coverage + (2 - view.tier.ordinal());
+        return true;
+    }
+
+    /**
+     * Where a box lands on screen: min x, min y, max x, max y in normalized device coordinates, clamped to the screen
+     * (the whole screen if part of it is beside or behind the eye). False if it is not on screen at all.
+     */
+    private static boolean screenRect(AABB box, Vec3 eye, Matrix4f viewProjection, float[] out)
+    {
+        float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY, maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
+        Vector4f p = new Vector4f();
+        for(int i = 0; i < 8; i++)
+        {
+            double x = (i & 1) == 0 ? box.minX : box.maxX;
+            double y = (i & 2) == 0 ? box.minY : box.maxY;
+            double z = (i & 4) == 0 ? box.minZ : box.maxZ;
+            viewProjection.transform(p.set((float)(x - eye.x), (float)(y - eye.y), (float)(z - eye.z), 1F));
+            if(p.w < 0.1F)
+            {
+                out[0] = -1F;
+                out[1] = -1F;
+                out[2] = 1F;
+                out[3] = 1F;
+                return true;
+            }
+            minX = Math.min(minX, p.x / p.w);
+            minY = Math.min(minY, p.y / p.w);
+            maxX = Math.max(maxX, p.x / p.w);
+            maxY = Math.max(maxY, p.y / p.w);
+        }
+        if(maxX < -1F || maxY < -1F || minX > 1F || minY > 1F)
+        {
+            return false;
+        }
+        out[0] = Math.max(-1F, minX);
+        out[1] = Math.max(-1F, minY);
+        out[2] = Math.min(1F, maxX);
+        out[3] = Math.min(1F, maxY);
+        return out[2] > out[0] && out[3] > out[1];
+    }
+
+    /**
+     * A cropped image's size along one axis: what is wanted, rounded up to {@link #TARGET_STEP}. The current size is
+     * kept while it is big enough and not much too big, so the image is not made anew every frame as the cloak's part
+     * of the screen changes.
+     */
+    /** Sets a matrix that stretches a part of the screen (normalized device coordinates) over the whole of it. */
+    private static void cropTo(Matrix4f matrix, float minX, float minY, float maxX, float maxY)
+    {
+        float hx = (maxX - minX) / 2F, hy = (maxY - minY) / 2F;
+        matrix.identity().m00(1F / hx).m11(1F / hy).m30(-(maxX + minX) / 2F / hx).m31(-(maxY + minY) / 2F / hy);
+    }
+
+    private static int targetSize(float wanted, int screen, int current)
+    {
+        int size = Math.min(screen, Math.max(TARGET_STEP, (int)Math.ceil(wanted / TARGET_STEP) * TARGET_STEP));
+        if(current >= size && current <= size * 3 / 2 + TARGET_STEP)
+        {
+            return current;
+        }
+        return size;
+    }
+
     private void render(Minecraft mc, GameRenderer gameRenderer, Camera mainCamera, DeltaTracker deltaTracker, SpyView view, Matrix4f mainProjection)
     {
+        boolean crop = view.plannedFrame == frame - 1;
         ClientLevel level = mc.level;
         LevelRenderer levelRenderer = mc.levelRenderer;
         LevelRendererAccessor lr = (LevelRendererAccessor)levelRenderer;
@@ -305,12 +542,25 @@ public final class SpyViewRenderer
             return;
         }
 
-        //Offscreen target with the screen's shape, so screen-space sampling lines up. A cloak's views are drawn smaller
-        //(each side seen draws the world again): the glass samples them by screen position, so they only get softer.
+        //Offscreen target. A screen's image covers the whole screen, so screen-space sampling lines up. A steady cloak's
+        //image covers only the part of the screen its glass takes up (cropMatrix stretches that part over the image),
+        //at its tier's share of that part's size: further away, smaller.
         RenderTarget main = mc.getMainRenderTarget();
-        float scale = view.placement != null && view.placement.cullRender() ? Math.clamp(GlassConfig.get().cloakViewScale, 0.25F, 1F) : 1F;
-        int width = Math.max(1, Math.round(main.width * scale));
-        int height = Math.max(1, Math.round(main.height * scale));
+        Matrix4f cropMatrix = new Matrix4f();
+        Matrix4f cullCropMatrix = new Matrix4f();
+        int width = main.width;
+        int height = main.height;
+        if(crop)
+        {
+            float[] r = view.wantedRect;
+            cropTo(cropMatrix, r[0], r[1], r[2], r[3]);
+            //Culling crops too, but always keeps the middle of the screen: the game pulls the frustum back along the view
+            //until the camera's own surroundings fit in it, and a frustum off to one side never got them in (it froze).
+            cropTo(cullCropMatrix, Math.min(r[0], -CULL_CENTRE), Math.min(r[1], -CULL_CENTRE), Math.max(r[2], CULL_CENTRE), Math.max(r[3], CULL_CENTRE));
+            float hx = (r[2] - r[0]) / 2F, hy = (r[3] - r[1]) / 2F;
+            width = targetSize(main.width * hx * view.tier.scale, main.width, view.target == null ? 0 : view.target.width);
+            height = targetSize(main.height * hy * view.tier.scale, main.height, view.target == null ? 0 : view.target.height);
+        }
         if(view.target == null)
         {
             view.target = new TextureTarget("GLASS view " + view.channel, width, height, true);
@@ -343,13 +593,19 @@ public final class SpyViewRenderer
         view.camera.configure(level, entity, position, rotation, partialTick);
 
         float fov = gr.glass$getFov(mainCamera, partialTick, true);
-        Matrix4f cullProjection = gameRenderer.getProjectionMatrix(Math.max(fov, mc.options.fov().get().intValue()));
+        //A cropped view also culls to its part of the screen: only the sections behind the cloak are drawn.
+        Matrix4f cullProjection = new Matrix4f(cullCropMatrix).mul(gameRenderer.getProjectionMatrix(Math.max(fov, mc.options.fov().get().intValue())));
         //Same projection as the world (it includes view bobbing): rebuilding it from the FOV made the view sway against the glass while walking.
         //Its far plane is pushed much further out, because the clipping below tilts the far plane towards the camera: with
         //the terminal right against blocks and the screen seen at an angle, it cut the view off diagonally.
-        Matrix4f projection = withFarPlaneFurther(mainProjection, gameRenderer.getProjectionMatrix(fov));
+        Matrix4f projection = new Matrix4f(cropMatrix).mul(withFarPlaneFurther(mainProjection, gameRenderer.getProjectionMatrix(fov)));
         Matrix4f unclipped = new Matrix4f(projection);
         Matrix4f modelView = new Matrix4f().rotation(rotation.conjugate(new Quaternionf()));
+        if(crop)
+        {
+            //The section graph only re-culls to the frustum when the camera turns; the crop changes it too.
+            view.prevCamRotX = Double.MIN_VALUE;
+        }
         if(placement.cullRender())
         {
             applyObliqueClip(projection, modelView, position, placement);
@@ -410,6 +666,11 @@ public final class SpyViewRenderer
                 drawCloakGround(mc, level, fill, view, unclipped, projection, modelView, position);
             }
             view.rendered = true;
+            view.cropped = crop;
+            view.drawnFrame = frame - 1;
+            view.drawnCamera = position;
+            view.drawnViewProjection.set(unclipped).mul(modelView);
+            System.arraycopy(view.wantedRect, 0, view.rect, 0, 4);
         }
         finally
         {

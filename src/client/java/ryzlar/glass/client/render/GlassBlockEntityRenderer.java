@@ -486,10 +486,16 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
      * What one face of the screen shows: the image, and while switching feed the old image the wave wipes over (outside
      * the wave). {@code full}: the new image is not drawn yet, so the old one is shown whole.
      */
-    private record ScreenImage(ResourceLocation texture, @org.jetbrains.annotations.Nullable ResourceLocation old, boolean full)
+    private record ScreenImage(ResourceLocation texture, @org.jetbrains.annotations.Nullable ResourceLocation old, boolean full,
+                               @org.jetbrains.annotations.Nullable String steadyCloak)
     {
         VertexConsumer consumer(MultiBufferSource buffers, boolean cull)
         {
+            RenderType cloakScreen = steadyCloak == null || old != null ? null : SpyViewRenderer.INSTANCE.cloakScreen(steadyCloak, cull);
+            if(cloakScreen != null)
+            {
+                return buffers.getBuffer(cloakScreen); //a cloak side's image, maybe cropped and a few frames old
+            }
             return buffers.getBuffer(old != null && !full ? GlassRenderTypes.wipe(texture, old, cull) : GlassRenderTypes.screen(texture, cull));
         }
 
@@ -505,13 +511,22 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
     {
         String side_ = "/" + side.getSerializedName();
         ResourceLocation texture;
+        String steadyCloak = null;
         if(switchingOff || placement == null)
         {
             texture = spy.textureFor(cloak ? key + side_ : key);
         }
         else
         {
-            texture = spy.request(placement.forFace(side));
+            //A cloak shown as it is (not wiping over another feed) is drawn only where it is on screen, and further away
+            //not every frame; its image is then drawn with where it was drawn from.
+            boolean steady = cloak && transition == null;
+            TerminalPlacement face = placement.forFace(side);
+            texture = spy.request(face, steady);
+            if(steady)
+            {
+                steadyCloak = face.channel;
+            }
         }
         ResourceLocation old = null;
         if(transition != null)
@@ -520,9 +535,9 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
         }
         if(texture == null)
         {
-            return old == null ? null : new ScreenImage(old, null, true);
+            return old == null ? null : new ScreenImage(old, null, true, null);
         }
-        return new ScreenImage(texture, old, false);
+        return new ScreenImage(texture, old, false, steadyCloak);
     }
 
     /** How long a punch ripple lasts (ticks), and how fast its ring travels (blocks per tick). */
@@ -765,9 +780,33 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
         return true;
     }
 
+    /** Screens: up to 256 blocks away. Cloaks: as far as the world is drawn (past that, what they hide is not drawn either). */
+    private static final int SCREEN_VIEW_DISTANCE = 256;
+
     @Override
     public int getViewDistance()
     {
-        return 256;
+        return Math.max(SCREEN_VIEW_DISTANCE, Minecraft.getInstance().options.getEffectiveRenderDistance() * 16);
+    }
+
+    /**
+     * A cloak hides a base from far away too: it is drawn as far as the world is (cheaply, see SpyViewRenderer), or the
+     * base would show behind it from further off. Other screens: up to {@link #SCREEN_VIEW_DISTANCE}.
+     */
+    @Override
+    public boolean shouldRender(GlassBaseBlockEntity te, Vec3 cameraPos)
+    {
+        double distance = Vec3.atCenterOf(te.getBlockPos()).distanceTo(cameraPos);
+        if(distance <= SCREEN_VIEW_DISTANCE)
+        {
+            return true;
+        }
+        if(distance > getViewDistance())
+        {
+            return false;
+        }
+        BlockPos masterPos = masterPos(te.channel);
+        Level level = te.getLevel();
+        return masterPos != null && level != null && level.getBlockEntity(masterPos) instanceof GlassProjectorBlockEntity master && master.cloak;
     }
 }

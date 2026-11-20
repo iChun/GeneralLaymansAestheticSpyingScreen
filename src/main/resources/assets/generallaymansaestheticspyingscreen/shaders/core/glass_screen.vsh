@@ -20,6 +20,14 @@ void main() {
 
     // Screen-space coordinates, so the terminal's view lines up with where the glass is on screen.
     texProj0 = projection_from_position(gl_Position);
+#ifdef REPROJECT
+    // A cloak's view may be a few frames old and cover only part of the screen: TextureMat takes this point (relative
+    // to the camera now) to where it was in that image. All zero: the image is screen-space after all (it is being
+    // drawn into another view right now).
+    if (TextureMat[3][3] != 0.0 || TextureMat[0][0] != 0.0) {
+        texProj0 = projection_from_position(TextureMat * vec4(Position, 1.0));
+    }
+#endif
     // Position on the screen in blocks from the projector, for the wave and the nano-pixel grid.
     texCoord0 = UV0;
     // Red + green: wave radius (16 bits).

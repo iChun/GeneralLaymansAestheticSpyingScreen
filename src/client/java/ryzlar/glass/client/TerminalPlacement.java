@@ -189,6 +189,27 @@ public class TerminalPlacement
         return GlassClientState.INSTANCE.getActiveGlass(screen);
     }
 
+    /**
+     * Cloak: what the glass of the whole cloak takes up in the world (a field's box, or the glass blocks), so its views
+     * only need to be drawn where that lands on screen. Null if there is no glass yet.
+     */
+    @org.jetbrains.annotations.Nullable
+    public AABB screenBox()
+    {
+        AABB field = master.cloakFieldBox();
+        if(field != null)
+        {
+            return field;
+        }
+        AABB box = null;
+        for(GlassBaseBlockEntity base : activeBlocks())
+        {
+            AABB block = new AABB(base.getBlockPos());
+            box = box == null ? block : box.minmax(block);
+        }
+        return box;
+    }
+
     /** Port of TerminalPlacement.generateActiveFaces. */
     public void onGlassChanged()
     {

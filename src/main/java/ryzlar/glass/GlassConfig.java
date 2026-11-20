@@ -23,11 +23,6 @@ public final class GlassConfig
     public int maxChannelsPerPlayer = 10;
     /** Wrong channel passwords a player may enter per minute before being made to wait. */
     public int failedPasswordsPerMinute = 5;
-    /**
-     * Client: the resolution a cloak's views are drawn at, as a share of the window's (0.25 to 1). Each side of a cloak
-     * seen draws the world again, so this is what a cloak costs; behind the glass the difference hardly shows.
-     */
-    public float cloakViewScale = 0.67F;
 
     public static GlassConfig get()
     {
