@@ -159,6 +159,21 @@ public final class SpyViewRenderer
         return targetOverride;
     }
 
+    /** A holo cube's panorama is being drawn (see Panoramas): the world draws into its target, and no views are drawn. */
+    private boolean capturing;
+
+    public void beginCapture(RenderTarget target)
+    {
+        capturing = true;
+        targetOverride = target;
+    }
+
+    public void endCapture()
+    {
+        capturing = false;
+        targetOverride = null;
+    }
+
     @Nullable
     public Vec3 mainCameraPosition()
     {
@@ -236,7 +251,7 @@ public final class SpyViewRenderer
     {
         Minecraft mc = Minecraft.getInstance();
         long thisFrame = frame++;
-        if(mc.level == null || views.isEmpty() || rendering != null)
+        if(mc.level == null || views.isEmpty() || rendering != null || capturing)
         {
             return;
         }

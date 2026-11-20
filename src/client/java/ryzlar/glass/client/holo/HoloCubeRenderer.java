@@ -211,7 +211,7 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
             state.entity.clientReach = hologram.reach;
         }
         //The scanned sky comes and goes with the wave, like the room.
-        SimulatedSky.offer(state.entityId, state.anchor, hologram.boxMin, hologram.boxMax, state.radius / (hologram.reach + 2F), state.scan, (long)state.time);
+        SimulatedSky.offer(state.entityId, state.anchor, hologram.boxMin, hologram.boxMax, wallsReached(state, hologram), state.scan, (long)state.time);
         poseStack.pushPose();
         poseStack.translate(state.anchor.getX() - state.x, state.anchor.getY() - state.y, state.anchor.getZ() - state.z);
         hologram.replay(buffers.getBuffer(GlassRenderTypes.hologram(HoloProjectorBlockEntity.Look.SOLID.ordinal())), poseStack.last(), state.radius, state.brightness);
@@ -227,10 +227,23 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
     private static final float DOME_FADE = 1.5F;
 
     /**
-     * Standing inside the simulation, a dome round the room shows the scan's 360 degree panorama (see {@link Panoramas})
-     * in place of the real world: the sky and the land around where the room was scanned, as they were, standing still.
-     * It fades in as you walk in, and with the nano wave. From outside the room it is not there: the room stands in the
-     * real world, inside its barrier.
+     * How far the nano wave has come towards the room's walls (0..1): the dome, the barrier and the scanned sky and
+     * weather come with it, and are all there once it reaches the walls at ground level (not only once it has filled
+     * a tall room up to its top, which takes long).
+     */
+    private static float wallsReached(State state, HologramRenderer.Hologram hologram)
+    {
+        org.joml.Vector3f min = hologram.boxMin, max = hologram.boxMax;
+        float dx = Math.max(Math.abs(min.x - (float)WAVE_ORIGIN.x), Math.abs(max.x - (float)WAVE_ORIGIN.x));
+        float dz = Math.max(Math.abs(min.z - (float)WAVE_ORIGIN.z), Math.abs(max.z - (float)WAVE_ORIGIN.z));
+        float walls = (float)Math.sqrt(dx * dx + dz * dz) + 1F;
+        return Math.clamp(state.radius / Math.min(walls, hologram.reach + 2F), 0F, 1F);
+    }
+
+    /**
+     * Standing inside the simulation, a dome round the room shuts the real world out: a black void, so all there is is
+     * the simulation itself, with the BARF edge at the foot of its walls (glass_dome). It fades in as you walk in, and
+     * with the nano wave. From outside the room it is not there: the room stands in the real world, inside its barrier.
      */
     private static void drawDome(State state, HologramRenderer.Hologram hologram, PoseStack.Pose pose, MultiBufferSource buffers)
     {
@@ -245,13 +258,8 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
         {
             return;
         }
-        float fade = Math.clamp(inside / DOME_FADE, 0F, 1F) * Math.clamp(state.radius / (hologram.reach + 2F), 0F, 1F);
+        float fade = Math.clamp(inside / DOME_FADE, 0F, 1F) * wallsReached(state, hologram);
         if(fade <= 0.01F)
-        {
-            return;
-        }
-        net.minecraft.resources.ResourceLocation panorama = Panoramas.texture(state.scan.id());
-        if(panorama == null)
         {
             return;
         }
@@ -266,12 +274,17 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
                 { { x0, y0, z0 }, { x0, y0, z1 }, { x1, y0, z1 }, { x1, y0, z0 } },
         };
         int alpha = Math.clamp(Math.round(fade * 255F), 0, 255);
-        com.mojang.blaze3d.vertex.VertexConsumer consumer = buffers.getBuffer(GlassRenderTypes.dome(panorama));
-        for(float[][] face : faces)
+        com.mojang.blaze3d.vertex.VertexConsumer consumer = buffers.getBuffer(GlassRenderTypes.DOME);
+        for(int f = 0; f < faces.length; f++)
         {
-            for(float[] c : face)
+            boolean wall = f < 4;
+            for(float[] c : faces[f])
             {
-                consumer.addVertex(pose, c[0], c[1], c[2]).setColor(255, 255, 255, alpha);
+                //Where on its wall each corner is: along it, and how high above the ground the cube stands on (its
+                //block's floor is 0 here; the roof and floor are far up, out of the edge's band).
+                float along = f < 2 ? c[0] - x0 : c[2] - z0;
+                float up = wall ? c[1] : 1000F;
+                consumer.addVertex(pose, c[0], c[1], c[2]).setUv(along, up).setColor(255, 255, 255, alpha);
             }
         }
     }
@@ -286,7 +299,7 @@ public class HoloCubeRenderer extends EntityRenderer<HoloCubeEntity, HoloCubeRen
      */
     private static void drawBarrier(State state, HologramRenderer.Hologram hologram, PoseStack.Pose pose, MultiBufferSource buffers)
     {
-        float fade = Math.clamp(state.radius / (hologram.reach + 2F), 0F, 1F);
+        float fade = wallsReached(state, hologram);
         if(fade <= 0.01F)
         {
             return;

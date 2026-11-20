@@ -33,7 +33,16 @@ public class GlassClient implements ClientModInitializer
         ClientTickEvents.END_CLIENT_TICK.register(GlassClientState.INSTANCE::clientTick);
         ClientTickEvents.END_CLIENT_TICK.register(ryzlar.glass.client.render.ScreenBack::tick);
         ryzlar.glass.client.render.LinkHighlight.init();
-        ryzlar.glass.client.gadget.GadgetsClient.init();
+        net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback.EVENT.register((stack, context, type, lines) -> {
+            if(stack.is(GlassRegistry.CLOAK_AMPLIFIER.asItem()))
+            {
+                lines.add(net.minecraft.network.chat.Component.translatable("glass.tooltip.amplifier").withStyle(net.minecraft.ChatFormatting.GRAY));
+            }
+        });
+        if(ryzlar.glass.gadget.GadgetFeature.ENABLED)
+        {
+            ryzlar.glass.client.gadget.GadgetsClient.init();
+        }
         //No selection outline on blocks a cloak hides (or on the cloak's own glass), seen from outside.
         WorldRenderEvents.BEFORE_BLOCK_OUTLINE.register((context, hit) -> !(hit instanceof BlockHitResult block
                 && block.getType() == HitResult.Type.BLOCK

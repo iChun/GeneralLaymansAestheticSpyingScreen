@@ -53,6 +53,24 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     public static final int MAX_FIELD_HEIGHT = 32;
     public static final int MAX_CLOAK_DEPTH = 32;
 
+    /**
+     * How big a cloak may be, so a whole village cannot be cloaked and every client drawing it slowed to a crawl (the
+     * ground under and beside a cloak is drawn again by each client, and that grows with its size): a cloak field's
+     * floor (blocks each way), its height, a glass cloak's number of glass blocks, and how deep a cloak hides.
+     * Cloak amplifiers next to the projector raise them.
+     */
+    public record CloakLimits(int amplifiers, int footprint, int height, int glass, int depth) {}
+
+    public static final int MAX_AMPLIFIERS = 2;
+    private static final CloakLimits[] LIMITS = {
+            new CloakLimits(0, 32, 16, 256, 16),
+            new CloakLimits(1, 48, 24, 576, 24),
+            new CloakLimits(2, 64, 32, 1024, 32),
+    };
+    /** How often a running cloak checks it still fits (an amplifier may have been taken away), in ticks. */
+    private static final int LIMIT_CHECK_INTERVAL = 20;
+    private int limitTimer;
+
     //The camera being shown, resolved by the server
     public boolean camValid;
     public ResourceKey<Level> camDimension = Level.OVERWORLD;
@@ -136,6 +154,92 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
         return new int[] { minX, y, minZ, maxX, maxZ };
     }
 
+    /** The limits this projector's cloak has, with the amplifiers next to it now. */
+    public CloakLimits cloakLimits()
+    {
+        int amplifiers = 0;
+        if(level != null)
+        {
+            for(Direction direction : Direction.values())
+            {
+                if(level.getBlockState(worldPosition.relative(direction)).is(GlassRegistry.CLOAK_AMPLIFIER))
+                {
+                    amplifiers++;
+                }
+            }
+        }
+        return LIMITS[Math.min(amplifiers, MAX_AMPLIFIERS)];
+    }
+
+    /** Why this projector's cloak may not run (it is too big for its limits), or null if it may. */
+    @Nullable
+    public net.minecraft.network.chat.Component cloakProblem()
+    {
+        if(!cloak || level == null)
+        {
+            return null;
+        }
+        CloakLimits limits = cloakLimits();
+        if(cloakField)
+        {
+            int[] corners = fieldCorners(wirelessPos);
+            if(corners != null)
+            {
+                int width = corners[3] - corners[0] + 1, length = corners[4] - corners[2] + 1;
+                if(width > limits.footprint() || length > limits.footprint())
+                {
+                    return net.minecraft.network.chat.Component.translatable("glass.msg.cloakTooBig", width + "x" + length,
+                            limits.footprint() + "x" + limits.footprint());
+                }
+            }
+            return null;
+        }
+        if(wirelessPos.isEmpty() && countGlass(limits.glass() + 1) > limits.glass())
+        {
+            return net.minecraft.network.chat.Component.translatable("glass.msg.cloakTooMuchGlass", limits.glass());
+        }
+        return null;
+    }
+
+    /** The glass blocks joined to this projector (itself included), counted up to {@code stopAt}. */
+    private int countGlass(int stopAt)
+    {
+        java.util.Set<BlockPos> seen = new java.util.HashSet<>();
+        java.util.ArrayDeque<BlockPos> queue = new java.util.ArrayDeque<>();
+        seen.add(worldPosition);
+        queue.add(worldPosition);
+        while(!queue.isEmpty() && seen.size() < stopAt)
+        {
+            BlockPos pos = queue.poll();
+            for(Direction direction : Direction.values())
+            {
+                BlockPos next = pos.relative(direction);
+                if(!seen.contains(next) && level.isLoaded(next) && level.getBlockState(next).getBlock() instanceof ryzlar.glass.block.GlassBlock glass
+                        && glass.getKind() != ryzlar.glass.block.GlassBlock.Kind.WIRELESS)
+                {
+                    seen.add(next);
+                    queue.add(next);
+                }
+            }
+        }
+        return seen.size();
+    }
+
+    /** Tells the players near the projector why its cloak will not run. */
+    private void tellNearby(net.minecraft.network.chat.Component message)
+    {
+        if(level instanceof ServerLevel server)
+        {
+            for(net.minecraft.server.level.ServerPlayer player : server.players())
+            {
+                if(player.blockPosition().closerThan(worldPosition, 24D))
+                {
+                    player.displayClientMessage(message.copy().withStyle(net.minecraft.ChatFormatting.RED), true);
+                }
+            }
+        }
+    }
+
     /** True when there is something to show once powered: a channel, or cloak mode. */
     public boolean hasFeed()
     {
@@ -171,6 +275,25 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
             if(wirelessPos.removeIf(pos -> level.isLoaded(pos) && !(level.getBlockEntity(pos) instanceof GlassWirelessBlockEntity)))
             {
                 sync();
+            }
+            //A cloak keeps to its limits: its height and depth are cut down, and it goes off if it no longer fits (an
+            //amplifier was taken away).
+            if(cloak && ++limitTimer >= LIMIT_CHECK_INTERVAL)
+            {
+                limitTimer = 0;
+                CloakLimits limits = cloakLimits();
+                if(fieldHeight > limits.height() || cloakDepth > limits.depth())
+                {
+                    fieldHeight = Math.min(fieldHeight, limits.height());
+                    cloakDepth = Math.min(cloakDepth, limits.depth());
+                    sync();
+                }
+                net.minecraft.network.chat.Component problem = active && distance == 1 ? cloakProblem() : null;
+                if(problem != null)
+                {
+                    tellNearby(problem);
+                    turnOff();
+                }
             }
             if(++resolveTimer >= RESOLVE_INTERVAL)
             {
@@ -243,6 +366,12 @@ public class GlassProjectorBlockEntity extends GlassBaseBlockEntity
     {
         if(newState)
         {
+            net.minecraft.network.chat.Component problem = active ? null : cloakProblem();
+            if(problem != null)
+            {
+                tellNearby(problem);
+                return;
+            }
             if(!active && hasFeed())
             {
                 active = true;

@@ -143,7 +143,7 @@ public class ProjectorScreen extends HoloScreen
 
     private void sendCloak(boolean on, int depth)
     {
-        int clamped = Math.clamp(depth, 1, GlassProjectorBlockEntity.MAX_CLOAK_DEPTH);
+        int clamped = Math.clamp(depth, 1, projector.cloakLimits().depth());
         ClientPlayNetworking.send(new GlassNetworking.ConfigureCloak(projector.getBlockPos(), on, clamped, projector.cloakField, projector.fieldHeight));
     }
 
@@ -161,7 +161,7 @@ public class ProjectorScreen extends HoloScreen
             return;
         }
         clearWarning();
-        int clamped = Math.clamp(height, 1, GlassProjectorBlockEntity.MAX_FIELD_HEIGHT);
+        int clamped = Math.clamp(height, 1, projector.cloakLimits().height());
         ClientPlayNetworking.send(new GlassNetworking.ConfigureCloak(projector.getBlockPos(), projector.cloak || on, projector.cloakDepth, on, clamped));
     }
 
@@ -250,6 +250,17 @@ public class ProjectorScreen extends HoloScreen
         if(projector.cloak)
         {
             g.drawString(font, font.plainSubstrByWidth(Component.translatable("glass.ui.cloakFeed", projector.cloakDepth).getString(), rw), rx, top + 53, Holo.OK, false);
+            //How big it may be, and whether it is too big.
+            GlassProjectorBlockEntity.CloakLimits limits = projector.cloakLimits();
+            Component problem = projector.cloakProblem();
+            Component line = problem != null ? problem : Component.translatable("glass.ui.cloakLimits", limits.footprint(), limits.footprint(), limits.height(),
+                    limits.amplifiers(), GlassProjectorBlockEntity.MAX_AMPLIFIERS);
+            int colour = problem != null ? Holo.withAlpha(Holo.ERROR, 0.6F + 0.4F * Holo.pulse(4F)) : Holo.MUTED;
+            List<net.minecraft.util.FormattedCharSequence> lines = font.split(line, rw);
+            for(int i = 0; i < Math.min(3, lines.size()); i++)
+            {
+                g.drawString(font, lines.get(i), rx, top + 64 + 9 * i, colour, false);
+            }
         }
         else if(!projector.channelId.isEmpty())
         {

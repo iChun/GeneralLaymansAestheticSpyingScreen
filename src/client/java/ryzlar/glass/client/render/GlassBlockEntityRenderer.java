@@ -328,6 +328,8 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
     /** How long a cloak field's walls take to rise out of the ground (and sink back), in ticks. */
     private static final float FIELD_RISE_TICKS = 40F;
     private static final float FIELD_OUTSET = 0.01F;
+    /** How close to a cloak field's diagonal (blocks) the view of the other side seen is kept going too. */
+    private static final double FIELD_HANDOVER = 4D;
 
     /**
      * A cloak field: four walls and a roof around the box between the corner extensions, each showing what lies behind
@@ -359,8 +361,18 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
         //From the projector's centre (where this renderer draws from), a little outside the box so the walls are clearly in
         //front of the corner extensions.
         float x0 = (float)(box.minX - origin.getX() - 0.5D) - FIELD_OUTSET, x1 = (float)(box.maxX - origin.getX() - 0.5D) + FIELD_OUTSET;
-        float y0 = (float)(box.minY - origin.getY() - 0.5D) - 0.002F, y1 = (float)(box.maxY - origin.getY() - 0.5D) + FIELD_OUTSET;
+        //The walls start a hair above the ground, not below it: through a strip below the ground's top the view looked
+        //into the ground blocks, where nothing is drawn, and showed a thin line of the void.
+        float y0 = (float)(box.minY - origin.getY() - 0.5D) + 0.002F, y1 = (float)(box.maxY - origin.getY() - 0.5D) + FIELD_OUTSET;
         float z0 = (float)(box.minZ - origin.getZ() - 0.5D) - FIELD_OUTSET, z1 = (float)(box.maxZ - origin.getZ() - 0.5D) + FIELD_OUTSET;
+        //Every side seen from outside shows the view of the side the eye is most in front of (see roofView): a side seen
+        //at a slant cut away a wide slab beside the field, out past where its ground is drawn back in, and showed the
+        //void there as pale triangles near the horizon.
+        Direction outside = roofView(box, eye);
+        double dx = eye.x < box.minX ? box.minX - eye.x : Math.max(0D, eye.x - box.maxX);
+        double dz = eye.z < box.minZ ? box.minZ - eye.z : Math.max(0D, eye.z - box.maxZ);
+        //Near the corner the other side may take over: keep its view going so it has an image when it does.
+        boolean nearCorner = Math.abs(dx - dz) < FIELD_HANDOVER;
         for(Direction side : new Direction[] { Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST, Direction.UP })
         {
             boolean seen = switch(side)
@@ -382,7 +394,12 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
                 continue;
             }
             boolean roof = side == Direction.UP;
-            ScreenImage image = image(spy, key, placement, true, roof ? roofView(box, eye) : side, switchingOff, null);
+            Direction view = outside == Direction.UP ? side : outside;
+            if(view != side && !roof && nearCorner)
+            {
+                image(spy, key, placement, true, side, switchingOff, null);
+            }
+            ScreenImage image = image(spy, key, placement, true, view, switchingOff, null);
             if(image == null)
             {
                 continue;

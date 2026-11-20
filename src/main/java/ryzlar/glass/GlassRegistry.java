@@ -51,6 +51,9 @@ public final class GlassRegistry
     public static final GlassSceneSelectorBlock GLASS_SCENE_SELECTOR = registerBlock("glass_scene_selector", GlassSceneSelectorBlock::new,
             BlockBehaviour.Properties.ofFullCopy(Blocks.LODESTONE).strength(2.5F).lightLevel(state -> 6).noOcclusion());
 
+    public static final ryzlar.glass.block.CloakAmplifierBlock CLOAK_AMPLIFIER = registerBlock("cloak_amplifier", ryzlar.glass.block.CloakAmplifierBlock::new,
+            BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).strength(4.0F, 6.0F).lightLevel(state -> 7).noOcclusion());
+
     public static final HoloBlocks.Scanner HOLO_SCANNER = registerBlock("holo_scanner", HoloBlocks.Scanner::new,
             BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).strength(3.0F).lightLevel(state -> 5).noOcclusion());
     public static final HoloBlocks.Projector HOLO_PROJECTOR = registerBlock("holo_projector", HoloBlocks.Projector::new,
@@ -132,6 +135,7 @@ public final class GlassRegistry
             entries.accept(GLASS_EXTENSION);
             entries.accept(GLASS_TERMINAL);
             entries.accept(GLASS_SCENE_SELECTOR);
+            entries.accept(CLOAK_AMPLIFIER);
             entries.accept(HOLO_SCANNER);
             entries.accept(HOLO_PROJECTOR);
             entries.accept(HOLO_EMITTER);

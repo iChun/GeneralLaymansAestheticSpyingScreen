@@ -1,4 +1,13 @@
 {
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:registry_contains",
+      "registry": "minecraft:item",
+      "values": [
+        "generallaymansaestheticspyingscreen:holo_map_table"
+      ]
+    }
+  ],
   "type": "minecraft:block",
   "pools": [
     {

@@ -1,1 +1,6 @@
-{ "model": { "type": "minecraft:model", "model": "minecraft:block/glass" } }
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "generallaymansaestheticspyingscreen:block/glass_extension"
+  }
+}

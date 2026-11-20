@@ -224,5 +224,10 @@
   "glass.tooltip.camo": "Right-click: invisible for 10 seconds (attacking or being hurt breaks it)",
   "glass.tooltip.emitter": "At the side of an opening, lens facing across; powered, it fills the opening with hard light",
   "glass.tooltip.sensor": "Next to a terminal: gives a signal and flashes ALERT on its screens when someone comes into view",
-  "glass.tooltip.mapTable": "A live map of the land around it. Right-click to switch it on or off"
+  "glass.tooltip.mapTable": "A live map of the land around it. Right-click to switch it on or off",
+  "block.generallaymansaestheticspyingscreen.cloak_amplifier": "Cloak Amplifier",
+  "glass.msg.cloakTooBig": "Cloak field too big: %s (max %s). Put a Cloak Amplifier next to the projector.",
+  "glass.msg.cloakTooMuchGlass": "Cloak too big: more than %s glass blocks. Put a Cloak Amplifier next to the projector.",
+  "glass.ui.cloakLimits": "Max %sx%s, %s high  (amplifiers %s/%s)",
+  "glass.tooltip.amplifier": "Next to a projector: its cloak may be bigger (two at most)"
 }

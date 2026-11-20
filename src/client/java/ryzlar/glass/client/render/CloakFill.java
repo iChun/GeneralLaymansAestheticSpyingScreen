@@ -46,6 +46,13 @@ public final class CloakFill
 {
     /** The world beside the hidden part drawn back in, in blocks (a ray through the glass at an angle runs far sideways). */
     public static final int SPREAD = 32;
+    /**
+     * How far beside the hidden part it may have to go: looking along the glass, a ray through it runs far sideways
+     * before it reaches the back of the hidden part, and the ground there is cut away too (see {@link #wantedSpread}).
+     */
+    private static final int MAX_SPREAD = 96;
+    private static final int BIG_MAX_SPREAD = 48;
+    private static final int BIG_AREA = 48 * 48;
     /** Rows of ground just behind the hidden part that are drawn again. */
     public static final int RING = 2;
     /** How far above the hidden part the world beside it is drawn back in (a ray up through the glass sees trees there). */
@@ -75,6 +82,12 @@ public final class CloakFill
             return new Area(side, groundY, minAcross, maxAcross, outerBlock, depth, hidden, lightPos, 0, 0, SPREAD, RING);
         }
 
+        /** The same, with {@code rows} rows in front of the glass drawn back in too (right in front of the hidden part). */
+        public Area inFront(int rows)
+        {
+            return new Area(side, groundY, minAcross, maxAcross, outerBlock, depth, hidden, lightPos, rows, after, spread, ring);
+        }
+
         /** Seen from above: the world all around the hidden part is drawn back in. */
         public Area allAround(int margin)
         {
@@ -96,6 +109,8 @@ public final class CloakFill
     }
 
     private final Area area;
+    /** How far beside the hidden part the world is drawn back in, as last built (at least the area's own). */
+    private int spread;
     private long builtAt = Long.MIN_VALUE;
     private final Mesh fill = new Mesh();
     private final Mesh ring = new Mesh();
@@ -103,6 +118,7 @@ public final class CloakFill
     public CloakFill(Area area)
     {
         this.area = area;
+        this.spread = area.spread();
     }
 
     // ---- Drawing ----
@@ -111,13 +127,59 @@ public final class CloakFill
     public void refresh(ClientLevel level)
     {
         long now = level.getGameTime();
-        if(builtAt != Long.MIN_VALUE && now - builtAt < REFRESH_TICKS && now >= builtAt)
+        int wanted = wantedSpread(Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
+        //Rebuilt once a second, or at once when the eye has moved to see further sideways than was drawn.
+        if(builtAt != Long.MIN_VALUE && now - builtAt < REFRESH_TICKS && now >= builtAt && wanted <= spread)
         {
             return;
         }
         //Later rebuilds of a cloak's sides are spread over the second instead of all landing on the same frame.
         builtAt = builtAt == Long.MIN_VALUE ? now - area.side().ordinal() * 3L % REFRESH_TICKS : now;
+        spread = wanted;
         build(level);
+    }
+
+    /**
+     * How far beside the hidden part the world has to be drawn back in for this eye. A ray from the eye through the
+     * glass's side edge carries on sideways until it reaches the back of the hidden part (the clip plane): everything
+     * it passes there was cut away, so it is drawn back in out to where the ray gets. Seen almost along the glass that
+     * is far, seen square on it is just past the glass.
+     */
+    private int wantedSpread(Vec3 eye)
+    {
+        if(area.ring() == 0)
+        {
+            return area.spread(); //seen from above (a field's roof): drawn all round already
+        }
+        Direction side = area.side();
+        int sign = side.getStepX() + side.getStepZ();
+        double along = side.getAxis() == Direction.Axis.X ? eye.x : eye.z;
+        double outerFace = area.outerBlock() + (sign > 0 ? 1 : 0);
+        //How far in front of the glass the eye is (behind it, this side is not seen at all).
+        double front = (along - outerFace) * sign;
+        if(front <= 0D)
+        {
+            return area.spread();
+        }
+        Direction right = side.getClockWise();
+        int rightSign = right.getStepX() + right.getStepZ();
+        double eyeAcross = (right.getAxis() == Direction.Axis.X ? eye.x : eye.z) * rightSign;
+        double low = area.minAcross() - 1D, high = area.maxAcross() + 2D;
+        double stretch = (front + area.depth()) / Math.max(front, 0.05D);
+        double farLow = eyeAcross + (low - eyeAcross) * stretch;
+        double farHigh = eyeAcross + (high - eyeAcross) * stretch;
+        double needed = Math.max(area.minAcross() - farLow, farHigh - area.maxAcross()) + 3D;
+        return (int)Math.clamp(Math.ceil(needed), area.spread(), isBig() ? BIG_MAX_SPREAD : MAX_SPREAD);
+    }
+
+    /**
+     * A big cloak (bigger than {@link #BIG_AREA} blocks of floor, with cloak amplifiers): its ground is drawn the light
+     * way, so drawing it again every second stays cheap: not as far to the sides, and beside it each column only up
+     * to the top of what stands there, not the air above it.
+     */
+    private boolean isBig()
+    {
+        return area.depth() * (area.maxAcross() - area.minAcross() + 1) > BIG_AREA;
     }
 
     /** The ground under and beside the hidden part (drawn without the clip plane, over a cleared depth buffer). */
@@ -244,7 +306,10 @@ public final class CloakFill
         for(int along = -area.before(); along < lastFillRow + area.ring(); along++)
         {
             boolean behind = along >= lastFillRow;
-            for(int across = area.minAcross() - area.spread(); across <= area.maxAcross() + area.spread(); across++)
+            //In front of the glass only right in front of the hidden part (a cloak field's walls stand a hair in front
+            //of it); from above, all round.
+            int sideways = along < 0 && area.ring() > 0 ? 1 : spread;
+            for(int across = area.minAcross() - sideways; across <= area.maxAcross() + sideways; across++)
             {
                 BlockPos base = area.column(along, across, 0);
                 Column column = made.get(columnKey(base));
@@ -309,7 +374,9 @@ public final class CloakFill
                         low = Math.min(low, neighbour.height());
                     }
                 }
-                for(int y = Math.max(low - 1, lowest); y <= top; y++)
+                //A big cloak's surroundings: only up to the top of what stands there, not the air above it.
+                int columnTop = isBig() && real != null ? Math.min(top, real.height() + 1) : top;
+                for(int y = Math.max(low - 1, lowest); y <= columnTop; y++)
                 {
                     drawer.draw(fill, new BlockPos(base.getX(), y, base.getZ()));
                 }

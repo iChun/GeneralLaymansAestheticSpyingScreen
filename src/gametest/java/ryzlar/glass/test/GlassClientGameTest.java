@@ -98,6 +98,84 @@ public class GlassClientGameTest implements FabricClientGameTest
         LOGGER.info("GLASS test OK: {}", message);
     }
 
+    /** A cloak field in a little village, looked at from low, grazing, high and inside angles. */
+    private static void cloakOnly(TestSingleplayerContext singleplayer, ClientGameTestContext context, TestServerContext server)
+    {
+        //A village-like spot: paths, a raised farm, houses, a tree and a lamp post, round and inside the field.
+        server.runCommand("fill -100 -61 0 -20 -61 90 minecraft:grass_block");
+        server.runCommand("fill -100 -60 0 -20 -50 90 minecraft:air");
+        //A long strip of ground out along the field, for looking along a wall far into the distance.
+        server.runCommand("fill -19 -61 25 120 -61 60 minecraft:grass_block");
+        server.runCommand("fill -75 -61 42 -40 -61 43 minecraft:dirt_path");
+        server.runCommand("fill -58 -61 20 -57 -61 70 minecraft:dirt_path");
+        server.runCommand("fill -52 -60 50 -47 -60 55 minecraft:oak_log");
+        server.runCommand("fill -51 -60 51 -48 -60 54 minecraft:farmland[moisture=7]");
+        server.runCommand("fill -70 -60 30 -66 -56 34 minecraft:oak_planks hollow");
+        server.runCommand("fill -47 -60 30 -43 -57 34 minecraft:cobblestone hollow");
+        server.runCommand("fill -58 -60 42 -58 -56 42 minecraft:oak_log");
+        server.runCommand("fill -60 -55 40 -56 -53 44 minecraft:oak_leaves[persistent=true]");
+        server.runCommand("fill -45 -60 44 -45 -58 44 minecraft:oak_fence");
+        server.runCommand("setblock -45 -57 44 minecraft:white_wool");
+        //The field: four wireless extensions in the corners, the projector beside them.
+        server.runCommand("setblock -62 -60 38 generallaymansaestheticspyingscreen:glass_wireless_extension");
+        server.runCommand("setblock -54 -60 38 generallaymansaestheticspyingscreen:glass_wireless_extension");
+        server.runCommand("setblock -62 -60 46 generallaymansaestheticspyingscreen:glass_wireless_extension");
+        server.runCommand("setblock -54 -60 46 generallaymansaestheticspyingscreen:glass_wireless_extension");
+        server.runCommand("setblock -66 -60 50 generallaymansaestheticspyingscreen:glass_projector{placingFace:\"south\",wirelessPos:[[I;-62,-60,38],[I;-54,-60,38],[I;-62,-60,46],[I;-54,-60,46]]}");
+        context.waitTicks(2);
+        server.runOnServer(s -> {
+            GlassProjectorBlockEntity field = (GlassProjectorBlockEntity)s.overworld().getBlockEntity(FIELD_PROJECTOR);
+            field.cloak = true;
+            field.cloakField = true;
+            field.fieldHeight = 10;
+            field.sync();
+        });
+        server.runCommand("tp @p -58 -60 70 180 5");
+        settle(singleplayer, context);
+        server.runCommand("setblock -66 -61 50 minecraft:redstone_block");
+        context.waitTicks(80);
+        //Spectator, so the high views do not fall.
+        server.runCommand("gamemode spectator @p");
+        //Far enough to see where the cloak's ground ends (the void showed as pale triangles near the horizon).
+        context.runOnClient(client -> client.options.renderDistance().set(12));
+        //Each view: where the feet are, and how far to the side of the field's centre it looks (degrees), so the field
+        //is seen square on, off to one side, or at the edge of the screen. Low ones, high ones from afar, and one
+        //looking down at a wall's foot.
+        double[] centre = { -57.5D, -56D, 42.5D };
+        Object[][] views = {
+                { "front", -57.5D, -60D, 62.5D, 0D },
+                { "grazing_left", -75D, -60D, 52D, 0D },
+                { "grazing_right", -40D, -60D, 52D, 0D },
+                { "along_south", -80D, -60D, 48D, 0D },
+                { "high_sw", -85D, -40D, 70D, 0D },
+                { "high_sw_side", -85D, -40D, 70D, 25D },
+                { "high_se_side", -30D, -40D, 70D, -25D },
+                { "high_nw_side", -85D, -40D, 15D, -25D },
+                { "high_far", -57.5D, -35D, 90D, 20D },
+                { "high_far_other", -57.5D, -35D, 90D, -20D },
+                { "high_close", -70D, -44D, 56D, 15D },
+                { "slant_wall_height", -110D, -51.5D, 52D, 0D },
+                { "slant_wall_height_side", -110D, -51.5D, 52D, 12D },
+                { "slant_far", -120D, -48D, 50D, -8D },
+                { "slant_other", -5D, -51.5D, 33D, 0D },
+                { "along_wall_far", -100D, -51.5D, 48D, 0D },
+                { "along_wall_far_side", -100D, -51.5D, 48D, 5D },
+        };
+        for(Object[] view : views)
+        {
+            double x = (double)view[1], y = (double)view[2], z = (double)view[3];
+            double dx = centre[0] - x, dy = centre[1] - (y + 1.62D), dz = centre[2] - z;
+            double yaw = Math.toDegrees(Math.atan2(-dx, dz)) + (double)view[4];
+            double pitch = -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
+            server.runCommand(String.format(java.util.Locale.ROOT, "tp @p %.2f %.2f %.2f %.1f %.1f", x, y, z, yaw, pitch));
+            context.waitTicks(25);
+            context.takeScreenshot("cloakonly_" + view[0]);
+        }
+        server.runCommand("tp @p -57.5 -59.4 50.5 180 45");
+        context.waitTicks(25);
+        context.takeScreenshot("cloakonly_ground_seam");
+    }
+
     private static ServerPlayer player(MinecraftServer server)
     {
         return server.getPlayerList().getPlayers().getFirst();
@@ -150,6 +228,12 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("gamerule doDaylightCycle false");
             server.runCommand("gamerule doWeatherCycle false");
             server.runCommand("weather clear");
+            //GLASS_TEST_ONLY=cloak: only the cloak field, looked at from many sides (quick, to chase a cloak bug).
+            if("cloak".equals(System.getenv("GLASS_TEST_ONLY")))
+            {
+                cloakOnly(singleplayer, context, server);
+                return;
+            }
 
             //Two cameras: one looking at pillars and a gold wall, one at a diamond wall. A spare terminal for the GUI.
             server.runCommand("fill 38 -60 -6 38 -55 -6 minecraft:red_wool");
@@ -846,60 +930,101 @@ public class GlassClientGameTest implements FabricClientGameTest
             settle(singleplayer, context);
             context.waitTicks(20);
 
-            //Gadgets. A motion sensor next to the diamond camera, and a zombie in its view: the sensor fires, and the
-            //tablet tuned to that channel shows the camera's picture with the alert.
-            server.runCommand("tp @p 76.5 -60 10.5 200 10");
-            settle(singleplayer, context);
-            server.runOnServer(s -> {
-                ItemStack tablet = new ItemStack(ryzlar.glass.gadget.Gadgets.GLASS_TABLET);
-                tablet.set(ryzlar.glass.gadget.Gadgets.TABLET_LINK, new ryzlar.glass.gadget.TabletLink(diamondId, "Diamond Net"));
-                player(s).setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, tablet);
-            });
-            server.runCommand("setblock 81 -59 0 generallaymansaestheticspyingscreen:motion_sensor");
-            server.runCommand("summon minecraft:zombie 80.5 -60 6.5 {NoAI:1b,PersistenceRequired:1b,Silent:1b}");
-            context.waitTicks(15);
-            check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(81, -59, 0)).getValue(ryzlar.glass.gadget.MotionSensorBlock.POWERED)),
-                    "the motion sensor sees the zombie through the terminal");
-            context.setScreen(() -> new ryzlar.glass.client.gadget.TabletScreen(net.minecraft.world.InteractionHand.MAIN_HAND));
-            context.waitTicks(50);
-            context.takeScreenshot("gadget_tablet");
-            context.setScreen(() -> null);
-            server.runCommand("kill @e[type=minecraft:zombie]");
-            server.runCommand("setblock 81 -59 0 minecraft:air");
+            //The gadgets, while they are switched on (see GadgetFeature).
+            if(ryzlar.glass.gadget.GadgetFeature.ENABLED)
+            {
+                //Gadgets. A motion sensor next to the diamond camera, and a zombie in its view: the sensor fires, and the
+                //tablet tuned to that channel shows the camera's picture with the alert.
+                server.runCommand("tp @p 76.5 -60 10.5 200 10");
+                settle(singleplayer, context);
+                server.runOnServer(s -> {
+                    ItemStack tablet = new ItemStack(ryzlar.glass.gadget.Gadgets.GLASS_TABLET);
+                    tablet.set(ryzlar.glass.gadget.Gadgets.TABLET_LINK, new ryzlar.glass.gadget.TabletLink(diamondId, "Diamond Net"));
+                    player(s).setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, tablet);
+                });
+                server.runCommand("setblock 81 -59 0 generallaymansaestheticspyingscreen:motion_sensor");
+                server.runCommand("summon minecraft:zombie 80.5 -60 6.5 {NoAI:1b,PersistenceRequired:1b,Silent:1b}");
+                context.waitTicks(15);
+                check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(81, -59, 0)).getValue(ryzlar.glass.gadget.MotionSensorBlock.POWERED)),
+                        "the motion sensor sees the zombie through the terminal");
+                context.setScreen(() -> new ryzlar.glass.client.gadget.TabletScreen(net.minecraft.world.InteractionHand.MAIN_HAND));
+                context.waitTicks(50);
+                context.takeScreenshot("gadget_tablet");
+                context.setScreen(() -> null);
+                server.runCommand("kill @e[type=minecraft:zombie]");
+                server.runCommand("setblock 81 -59 0 minecraft:air");
 
-            //A doorway filled with hard light.
-            server.runCommand("fill 89 -61 14 99 -61 26 minecraft:stone_bricks");
-            server.runCommand("fill 90 -60 20 90 -57 20 minecraft:stone_bricks");
-            server.runCommand("fill 94 -60 20 94 -57 20 minecraft:stone_bricks");
-            server.runCommand("fill 90 -57 20 94 -57 20 minecraft:stone_bricks");
-            server.runCommand("setblock 90 -60 20 generallaymansaestheticspyingscreen:hard_light_emitter[facing=east]");
-            server.runCommand("setblock 89 -60 20 minecraft:redstone_block");
-            context.waitTicks(12);
-            check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(92, -59, 20)).is(ryzlar.glass.gadget.Gadgets.HARD_LIGHT)),
-                    "a powered hard-light emitter fills the doorway");
-            server.runCommand("tp @p 92.5 -60 25.5 180 5");
-            context.waitTicks(10);
-            context.takeScreenshot("gadget_hard_light");
+                //A doorway filled with hard light.
+                server.runCommand("fill 89 -61 14 99 -61 26 minecraft:stone_bricks");
+                server.runCommand("fill 90 -60 20 90 -57 20 minecraft:stone_bricks");
+                server.runCommand("fill 94 -60 20 94 -57 20 minecraft:stone_bricks");
+                server.runCommand("fill 90 -57 20 94 -57 20 minecraft:stone_bricks");
+                server.runCommand("setblock 90 -60 20 generallaymansaestheticspyingscreen:hard_light_emitter[facing=east]");
+                server.runCommand("setblock 89 -60 20 minecraft:redstone_block");
+                context.waitTicks(12);
+                check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(92, -59, 20)).is(ryzlar.glass.gadget.Gadgets.HARD_LIGHT)),
+                        "a powered hard-light emitter fills the doorway");
+                server.runCommand("tp @p 92.5 -60 25.5 180 5");
+                context.waitTicks(10);
+                context.takeScreenshot("gadget_hard_light");
 
-            //A holo map table, a decoy of the player, and optical camo.
-            server.runCommand("setblock 96 -60 16 generallaymansaestheticspyingscreen:holo_map_table");
-            server.runOnServer(s -> s.overworld().addFreshEntity(ryzlar.glass.gadget.HoloDecoyEntity.of(player(s), 92.5, -60, 16.5)));
-            server.runCommand("fill 97 -60 13 99 -59 14 minecraft:oak_planks");
-            server.runCommand("fill 93 -60 18 94 -58 18 minecraft:oak_log");
-            server.runCommand("tp @p 98.5 -58.5 19.5 145 35");
+                //A holo map table, a decoy of the player, and optical camo.
+                server.runCommand("setblock 96 -60 16 generallaymansaestheticspyingscreen:holo_map_table");
+                server.runOnServer(s -> s.overworld().addFreshEntity(ryzlar.glass.gadget.HoloDecoyEntity.of(player(s), 92.5, -60, 16.5)));
+                server.runCommand("fill 97 -60 13 99 -59 14 minecraft:oak_planks");
+                server.runCommand("fill 93 -60 18 94 -58 18 minecraft:oak_log");
+                server.runCommand("tp @p 98.5 -58.5 19.5 145 35");
+                context.waitTicks(40);
+                context.takeScreenshot("gadget_map_table");
+                server.runCommand("tp @p 92.5 -60 21.5 180 5");
+                context.waitTicks(10);
+                context.takeScreenshot("gadget_decoy");
+                server.runOnServer(s -> ryzlar.glass.gadget.OpticalCamo.engage(player(s)));
+                context.waitTicks(10);
+                check(server.computeOnServer(s -> ryzlar.glass.gadget.OpticalCamo.isCamouflaged(player(s))), "optical camo is on");
+                context.takeScreenshot("gadget_camo");
+                server.runOnServer(s -> ryzlar.glass.gadget.OpticalCamo.breakCamo(player(s)));
+                server.runCommand("setblock 89 -60 20 minecraft:air");
+                context.waitTicks(15);
+                check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(92, -59, 20)).isAir()), "unpowered, the hard light goes");
+            }
+            //An outdoor simulation, scanned at dusk in the rain and run at noon in the dry: from inside, the real sky at the
+            //scanned time and weather over the scanned land, and the edge falling apart into blue at the foot of the dome.
+            server.runCommand("weather rain");
+            server.runCommand("time set 12600");
+            server.runCommand("tp @p 95.5 -60 19.5 0 30");
+            context.waitTicks(5);
+            server.runCommand("item replace entity @p weapon.mainhand with generallaymansaestheticspyingscreen:holo_cube");
+            context.waitTicks(3);
+            BlockPos outdoorFloor = new BlockPos(95, -61, 23);
+            context.runOnClient(mc -> mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND,
+                    new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(outdoorFloor).add(0, 0.5, 0), net.minecraft.core.Direction.UP, outdoorFloor, false)));
+            context.waitTicks(5);
+            net.minecraft.world.phys.AABB outdoor = new net.minecraft.world.phys.AABB(93, -62, 21, 98, -55, 26);
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, outdoor).forEach(c -> c.scanFor(player(s))));
+            boolean outdoorScanned = false;
+            for(int i = 0; i < 60 && !outdoorScanned; i++)
+            {
+                context.waitTicks(5);
+                outdoorScanned = server.computeOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, outdoor).stream().anyMatch(c -> c.scan() != null));
+            }
+            check(outdoorScanned, "the cube scans the open air around it");
             context.waitTicks(40);
-            context.takeScreenshot("gadget_map_table");
-            server.runCommand("tp @p 92.5 -60 21.5 180 5");
-            context.waitTicks(10);
-            context.takeScreenshot("gadget_decoy");
-            server.runOnServer(s -> ryzlar.glass.gadget.OpticalCamo.engage(player(s)));
-            context.waitTicks(10);
-            check(server.computeOnServer(s -> ryzlar.glass.gadget.OpticalCamo.isCamouflaged(player(s))), "optical camo is on");
-            context.takeScreenshot("gadget_camo");
-            server.runOnServer(s -> ryzlar.glass.gadget.OpticalCamo.breakCamo(player(s)));
-            server.runCommand("setblock 89 -60 20 minecraft:air");
-            context.waitTicks(15);
-            check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(92, -59, 20)).isAir()), "unpowered, the hard light goes");
+            server.runCommand("weather clear");
+            server.runCommand("time set noon");
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, outdoor).forEach(HoloCubeEntity::toggle));
+            context.waitTicks(160);
+            server.runCommand("tp @p 95.5 -60 21.5 0 -8");
+            context.waitTicks(20);
+            context.takeScreenshot("cube_outdoor_horizon");
+            server.runCommand("tp @p 95.5 -60 21.5 0 -55");
+            context.waitTicks(5);
+            context.takeScreenshot("cube_outdoor_sky");
+            server.runCommand("tp @p 95.5 -60 21.5 0 12");
+            context.waitTicks(5);
+            context.takeScreenshot("cube_outdoor_edge");
+            server.runOnServer(s -> s.overworld().getEntitiesOfClass(HoloCubeEntity.class, outdoor).forEach(c -> c.startPickUp(player(s))));
+            context.waitTicks(80);
             server.runCommand("tp @p 0.5 -60 8.5 180 0");
             settle(singleplayer, context);
             context.waitTicks(10);

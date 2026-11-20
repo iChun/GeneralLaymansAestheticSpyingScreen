@@ -1,1 +1,7 @@
-{ "variants": { "": { "model": "minecraft:block/glass" } } }
+{
+  "variants": {
+    "": {
+      "model": "generallaymansaestheticspyingscreen:block/glass_extension"
+    }
+  }
+}

@@ -83,11 +83,22 @@ public class GlassBlock extends TransparentBlock implements EntityBlock
         };
     }
 
-    /** All GLASS blocks join up seamlessly, like one block type did in 1.12. */
+    /** The GLASS glass blocks join up seamlessly, like one block type did in 1.12 (not the wireless extension's pylon). */
     @Override
     protected boolean skipRendering(BlockState state, BlockState adjacentState, Direction direction)
     {
-        return adjacentState.getBlock() instanceof GlassBlock || super.skipRendering(state, adjacentState, direction);
+        boolean glass = kind != Kind.WIRELESS && adjacentState.getBlock() instanceof GlassBlock other && other.kind != Kind.WIRELESS;
+        return glass || super.skipRendering(state, adjacentState, direction);
+    }
+
+    /** The wireless extension is a relay pylon, not a whole block. */
+    private static final net.minecraft.world.phys.shapes.VoxelShape PYLON = net.minecraft.world.level.block.Block.box(3, 0, 3, 13, 14, 13);
+
+    @Override
+    protected net.minecraft.world.phys.shapes.VoxelShape getShape(BlockState state, net.minecraft.world.level.BlockGetter level, BlockPos pos,
+                                                                  net.minecraft.world.phys.shapes.CollisionContext context)
+    {
+        return kind == Kind.WIRELESS ? PYLON : super.getShape(state, level, pos, context);
     }
 
     @Override

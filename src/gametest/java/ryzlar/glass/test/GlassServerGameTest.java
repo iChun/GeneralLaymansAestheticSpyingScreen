@@ -66,6 +66,11 @@ public class GlassServerGameTest
     @GameTest(maxTicks = 80)
     public void hardLightFillsAnOpening(GameTestHelper helper)
     {
+        if(!ryzlar.glass.gadget.GadgetFeature.ENABLED)
+        {
+            helper.succeed();
+            return;
+        }
         //A doorway: posts at x 1 and 5, a lintel at y 4; the emitter at the bottom of the left post, facing across.
         for(int y = 1; y <= 4; y++)
         {
@@ -106,6 +111,11 @@ public class GlassServerGameTest
     @GameTest(maxTicks = 60)
     public void motionSensorSeesThroughItsTerminal(GameTestHelper helper)
     {
+        if(!ryzlar.glass.gadget.GadgetFeature.ENABLED)
+        {
+            helper.succeed();
+            return;
+        }
         helper.setBlock(3, 2, 1, GlassRegistry.GLASS_TERMINAL);
         ((ryzlar.glass.blockentity.GlassTerminalBlockEntity)helper.getLevel().getBlockEntity(helper.absolutePos(new BlockPos(3, 2, 1)))).facing = net.minecraft.core.Direction.SOUTH;
         helper.setBlock(4, 2, 1, ryzlar.glass.gadget.Gadgets.MOTION_SENSOR);
@@ -118,6 +128,11 @@ public class GlassServerGameTest
     @GameTest(maxTicks = 60)
     public void decoyLuresMonsters(GameTestHelper helper)
     {
+        if(!ryzlar.glass.gadget.GadgetFeature.ENABLED)
+        {
+            helper.succeed();
+            return;
+        }
         ryzlar.glass.gadget.HoloDecoyEntity decoy = helper.spawn(ryzlar.glass.gadget.Gadgets.HOLO_DECOY_ENTITY, new BlockPos(1, 1, 1));
         net.minecraft.world.entity.monster.Zombie zombie = helper.spawn(net.minecraft.world.entity.EntityType.ZOMBIE, new BlockPos(6, 1, 6));
         helper.succeedWhen(() -> helper.assertTrue(zombie.getTarget() == decoy, Component.literal("the zombie is not after the decoy")));

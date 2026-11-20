@@ -27,7 +27,10 @@ public class Glass implements ModInitializer
         GlassConfig.load();
         GlassRegistry.init();
         GlassSounds.init();
-        ryzlar.glass.gadget.Gadgets.init();
+        if(ryzlar.glass.gadget.GadgetFeature.ENABLED)
+        {
+            ryzlar.glass.gadget.Gadgets.init();
+        }
         GlassNetworking.init();
         ryzlar.glass.holo.HoloNetworking.init();
     }

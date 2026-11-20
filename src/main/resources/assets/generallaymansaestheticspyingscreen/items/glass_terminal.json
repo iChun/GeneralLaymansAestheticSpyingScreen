@@ -1,1 +1,6 @@
-{ "model": { "type": "minecraft:model", "model": "minecraft:block/obsidian" } }
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "generallaymansaestheticspyingscreen:block/glass_terminal"
+  }
+}

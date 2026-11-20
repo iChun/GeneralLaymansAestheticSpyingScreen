@@ -20,7 +20,7 @@ This fork adds a few things on top:
   blue, dissolving edge and a glowing barrier round it, so everyone can see a simulation is running. The scan reaches
   48 blocks up and takes a 360 degree panorama (1024 px a side) of the sky and land around it, shared through the
   server: inside the simulation that panorama surrounds you, and the light and rain are as when it was scanned.
-- **Gadgets.**
+- **Gadgets** (still in development, switched off in releases: set `GadgetFeature.ENABLED` to try them).
   - **GLASS Tablet:** a handheld screen that shows a channel's camera live.
   - **Hard-Light Emitter:** fills an opening with a wall of solid light that stops players, mobs and arrows,
     switched by redstone.

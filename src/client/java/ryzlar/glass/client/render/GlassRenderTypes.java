@@ -169,20 +169,13 @@ public final class GlassRenderTypes
             .withLocation(Glass.id("pipeline/glass_dome"))
             .withVertexShader(Glass.id("core/glass_dome"))
             .withFragmentShader(Glass.id("core/glass_dome"))
-            .withSampler("Sampler0")
-            .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS)
+            .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.QUADS)
             .withBlend(com.mojang.blaze3d.pipeline.BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
-    private static final Map<ResourceLocation, RenderType> DOMES = new HashMap<>();
-
-    public static RenderType dome(ResourceLocation panorama)
-    {
-        return DOMES.computeIfAbsent(panorama, tex -> RenderType.create("glass_dome", 1536, false, false, DOME_PIPELINE,
-                RenderType.CompositeState.builder()
-                        .setTextureState(new RenderStateShard.TextureStateShard(tex, false))
-                        .createCompositeState(false)));
-    }
+    /** The dome round a holo cube's simulation, seen from inside: a black void with the BARF edge (glass_dome). */
+    public static final RenderType DOME = RenderType.create("glass_dome", 1536, false, false, DOME_PIPELINE,
+            RenderType.CompositeState.builder().createCompositeState(false));
 
     private static final Map<ResourceLocation, RenderType> SCREENS = new HashMap<>();
     private static final Map<ResourceLocation, RenderType> SCREENS_NO_CULL = new HashMap<>();

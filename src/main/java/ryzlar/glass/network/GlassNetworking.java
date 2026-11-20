@@ -404,10 +404,11 @@ public final class GlassNetworking
         {
             return;
         }
+        GlassProjectorBlockEntity.CloakLimits limits = projector.cloakLimits();
         projector.cloak = payload.cloak();
-        projector.cloakDepth = Math.clamp(payload.depth(), 1, GlassProjectorBlockEntity.MAX_CLOAK_DEPTH);
+        projector.cloakDepth = Math.clamp(payload.depth(), 1, limits.depth());
         projector.cloakField = payload.field();
-        projector.fieldHeight = Math.clamp(payload.fieldHeight(), 1, GlassProjectorBlockEntity.MAX_FIELD_HEIGHT);
+        projector.fieldHeight = Math.clamp(payload.fieldHeight(), 1, limits.height());
         if(projector.active && !projector.hasFeed())
         {
             projector.turnOff();

@@ -105,6 +105,24 @@ public final class SimulatedSky
         return real + (scanned - real) * fade;
     }
 
+    /**
+     * The time of day the sky shows (0..1, as DimensionType.timeOfDay gives it): the scanned one inside a simulation,
+     * turning over from the real one the short way round as you walk in.
+     */
+    public static float timeOfDay(float real)
+    {
+        Minecraft mc = Minecraft.getInstance();
+        if(!active() || mc.level == null)
+        {
+            return real;
+        }
+        float scanned = mc.level.dimensionType().timeOfDay(sky.skyTime());
+        float delta = scanned - real;
+        delta -= (float)Math.floor(delta + 0.5F);
+        float time = real + delta * fade;
+        return time - (float)Math.floor(time);
+    }
+
     public static float rain(float real)
     {
         return active() ? real + (sky.rain() - real) * fade : real;

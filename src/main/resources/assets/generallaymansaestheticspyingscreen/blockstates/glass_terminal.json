@@ -1,1 +1,7 @@
-{ "variants": { "": { "model": "minecraft:block/obsidian" } } }
+{
+  "variants": {
+    "": {
+      "model": "generallaymansaestheticspyingscreen:block/glass_terminal"
+    }
+  }
+}

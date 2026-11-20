@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    "ADA",
+    "GEG",
+    "IRI"
+  ],
+  "key": {
+    "A": "minecraft:amethyst_block",
+    "D": "minecraft:diamond",
+    "G": "generallaymansaestheticspyingscreen:glass_extension",
+    "E": "minecraft:ender_eye",
+    "I": "minecraft:iron_block",
+    "R": "minecraft:redstone_block"
+  },
+  "result": {
+    "id": "generallaymansaestheticspyingscreen:cloak_amplifier",
+    "count": 1
+  }
+}

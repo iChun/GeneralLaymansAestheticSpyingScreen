@@ -1,4 +1,13 @@
 {
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:registry_contains",
+      "registry": "minecraft:item",
+      "values": [
+        "generallaymansaestheticspyingscreen:motion_sensor"
+      ]
+    }
+  ],
   "type": "minecraft:block",
   "pools": [
     {

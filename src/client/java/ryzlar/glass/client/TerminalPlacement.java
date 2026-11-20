@@ -330,7 +330,9 @@ public class TerminalPlacement
         int middle = (minAcross + maxAcross) / 2 * (across.getStepX() + across.getStepZ());
         int front = outerBlock + side.getStepX() + side.getStepZ();
         BlockPos lightPos = new BlockPos(side.getAxis() == Direction.Axis.X ? front : middle, y, side.getAxis() == Direction.Axis.Z ? front : middle);
-        return CloakFill.Area.side(side, y - 1, minAcross, maxAcross, outerBlock, depth, box, lightPos);
+        //One row in front of the box too: the walls stand a hair outside it, and the ground between the box and a wall
+        //(cut away by the clip plane like the rest) showed as a thin line of the void along the wall's foot.
+        return CloakFill.Area.side(side, y - 1, minAcross, maxAcross, outerBlock, depth, box, lightPos).inFront(1);
     }
 
     /** The screen's bounding box, stretched along the side's axis from the clip plane to the outer face. */
