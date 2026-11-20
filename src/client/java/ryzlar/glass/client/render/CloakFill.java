@@ -455,6 +455,15 @@ public final class CloakFill
     }
 
     /** Draws blocks of the {@link Terrain} into a mesh: their models, and their water or lava. */
+    /**
+     * Lights and draws one block's model into a mesh in place of vanilla's block renderer: with Sodium drawing the world
+     * (see {@link SodiumBlockLighter}), so the rebuilt ground is lit like the terrain around it.
+     */
+    interface BlockLighter
+    {
+        void render(BlockState state, BlockPos pos, PoseStack.Pose pose, VertexConsumer out, List<BlockModelPart> parts);
+    }
+
     private static final class Drawer
     {
         private final Minecraft mc = Minecraft.getInstance();
@@ -463,11 +472,15 @@ public final class CloakFill
         private final PoseStack pose = new PoseStack();
         private final RandomSource random = RandomSource.create();
         private final List<BlockModelPart> parts = new ArrayList<>();
+        /** Null: vanilla's block renderer (with vanilla's own rendering, the ground already matches). */
+        @Nullable
+        private final BlockLighter lighter;
 
         Drawer(Terrain terrain, BlockPos origin)
         {
             this.terrain = terrain;
             this.origin = origin;
+            this.lighter = ViewBackend.current() == ViewBackend.SODIUM ? SodiumBlockLighter.create(terrain) : null;
         }
 
         void draw(Mesh mesh, BlockPos pos)
@@ -495,7 +508,14 @@ public final class CloakFill
             mc.getBlockRenderer().getBlockModel(state).collectParts(random, parts);
             pose.pushPose();
             pose.translate(pos.getX() - origin.getX(), pos.getY() - origin.getY(), pos.getZ() - origin.getZ());
-            mc.getBlockRenderer().renderBatched(state, pos, terrain, pose, mesh, true, parts);
+            if(lighter != null)
+            {
+                lighter.render(state, pos, pose.last(), mesh, parts);
+            }
+            else
+            {
+                mc.getBlockRenderer().renderBatched(state, pos, terrain, pose, mesh, true, parts);
+            }
             pose.popPose();
         }
     }

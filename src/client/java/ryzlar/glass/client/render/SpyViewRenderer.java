@@ -543,10 +543,13 @@ public final class SpyViewRenderer
         boolean crop = view.plannedFrame == frame - 1;
         ClientLevel level = mc.level;
         LevelRenderer levelRenderer = mc.levelRenderer;
-        LevelRendererAccessor lr = (LevelRendererAccessor)levelRenderer;
         GameRendererAccessor gr = (GameRendererAccessor)gameRenderer;
-        ViewArea viewArea = lr.glass$getViewArea();
-        if(viewArea == null)
+        //Vanilla: the view borrows the renderer's section visibility (its own graph, swapped in below). Sodium works out
+        //what the view sees by itself (SodiumWorldRendererMixin), and vanilla's section state is not there to borrow.
+        boolean vanilla = ViewBackend.current() == ViewBackend.VANILLA;
+        LevelRendererAccessor lr = vanilla ? (LevelRendererAccessor)levelRenderer : null;
+        ViewArea viewArea = vanilla ? lr.glass$getViewArea() : null;
+        if(vanilla && viewArea == null)
         {
             return;
         }
@@ -584,7 +587,7 @@ public final class SpyViewRenderer
             view.texture.set(view.target);
         }
 
-        if(view.viewArea != viewArea)
+        if(vanilla && view.viewArea != viewArea)
         {
             view.viewArea = viewArea;
             view.needsPrime = true;
@@ -640,6 +643,12 @@ public final class SpyViewRenderer
         viewProjection = view.projection.getBuffer(projection);
         RenderSystem.setProjectionMatrix(viewProjection, ProjectionType.PERSPECTIVE);
         levelRenderer.prepareCullFrustum(position, modelView, cullProjection);
+        if(!vanilla)
+        {
+            renderWithSodium(mc, level, levelRenderer, gr, deltaTracker, mainCamera, view, placement, modelView, projection, unclipped,
+                    position, fogBuffer, fogColor, foggy, crop);
+            return;
+        }
 
         //Swap in this view's section visibility state.
         SectionOcclusionGraph savedGraph = lr.glass$getSectionOcclusionGraph();
@@ -716,6 +725,47 @@ public final class SpyViewRenderer
             lr.glass$setPrevCamZ(savedPrevCamZ);
             lr.glass$setPrevCamRotX(savedPrevCamRotX);
             lr.glass$setPrevCamRotY(savedPrevCamRotY);
+        }
+    }
+
+    /**
+     * Draws a view with Sodium's renderer: the same as the vanilla way without borrowing vanilla's section state, as
+     * Sodium works out what the view sees right then (and is kept from taking it for the player moving, see
+     * SodiumWorldRendererMixin). It reads the cull frustum set above, so the crop and the shorter cloak distance hold.
+     */
+    private void renderWithSodium(Minecraft mc, ClientLevel level, LevelRenderer levelRenderer, GameRendererAccessor gr, DeltaTracker deltaTracker,
+                                  Camera mainCamera, SpyView view, TerminalPlacement placement, Matrix4f modelView, Matrix4f projection,
+                                  Matrix4f unclipped, Vec3 position, GpuBufferSlice fogBuffer, Vector4f fogColor, boolean foggy, boolean crop)
+    {
+        mainCameraPosition = mainCamera.getPosition();
+        targetOverride = view.target;
+        rendering = view;
+        //From behind the terminal, often inside blocks, occlusion culling would hide what the screen should show.
+        boolean smartCull = mc.smartCull;
+        mc.smartCull = false;
+        try
+        {
+            levelRenderer.renderLevel(gr.glass$getResourcePool(), deltaTracker, false, view.camera, modelView, projection, fogBuffer, fogColor, !foggy);
+            CloakFill fill = placement.cloakFill();
+            if(fill != null && view.target != null)
+            {
+                drawCloakGround(mc, level, fill, view, unclipped, projection, modelView, position);
+            }
+            view.rendered = true;
+            view.cropped = crop;
+            view.drawnFrame = frame - 1;
+            view.drawnCamera = position;
+            view.drawnViewProjection.set(unclipped).mul(modelView);
+            System.arraycopy(view.wantedRect, 0, view.rect, 0, 4);
+        }
+        finally
+        {
+            mc.smartCull = smartCull;
+            rendering = null;
+            viewProjection = null;
+            skyProjection = null;
+            targetOverride = null;
+            mainCameraPosition = null;
         }
     }
 

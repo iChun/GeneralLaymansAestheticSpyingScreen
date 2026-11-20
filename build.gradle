@@ -61,6 +61,9 @@ dependencies {
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
+	// The Sodium view backend (ViewBackend.SODIUM) hooks into Sodium's renderer: compiled against it, never shipped.
+	modCompileOnly "maven.modrinth:sodium:${project.sodium_version}"
+
 	// Compatibility runs: ./gradlew runClient -PwithSodium (or -PwithIris, which brings Sodium too).
 	if(project.hasProperty("withSodium") || project.hasProperty("withIris")) {
 		modLocalRuntime "maven.modrinth:sodium:${project.sodium_version}"

@@ -12,7 +12,18 @@ public final class RendererMods
     /** Mods whose renderer replaces vanilla's chunk rendering (Iris first: it needs Sodium, and is what the player put in; the others are Sodium forks). */
     private static final String[] REPLACING = { "iris", "sodium", "embeddium", "nvidium" };
 
+    /** Sodium versions the Sodium view backend hooks into (it uses Sodium's insides, which change between versions). */
+    private static final String SODIUM_SUPPORTED = "0.7.";
+
     private RendererMods() {}
+
+    /** True if Sodium is installed in a version the Sodium view backend (and its mixin) was made for. */
+    public static boolean sodiumBackend()
+    {
+        return FabricLoader.getInstance().getModContainer("sodium")
+                .map(sodium -> sodium.getMetadata().getVersion().getFriendlyString().startsWith(SODIUM_SUPPORTED))
+                .orElse(false);
+    }
 
     /** The installed mod that replaces vanilla's chunk rendering, or null. */
     @Nullable

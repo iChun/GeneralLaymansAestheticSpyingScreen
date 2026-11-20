@@ -17,6 +17,7 @@
     "MinecraftMixin",
     "SectionOcclusionGraphAccessor",
     "SkyRendererMixin",
+    "SodiumWorldRendererMixin",
     "VanillaSectionsMixin"
   ],
   "injectors": {

@@ -174,6 +174,13 @@ public class GlassClientGameTest implements FabricClientGameTest
         server.runCommand("tp @p -57.5 -59.4 50.5 180 45");
         context.waitTicks(25);
         context.takeScreenshot("cloakonly_ground_seam");
+        //Close above the hidden tree, looking down at the ground it stood on (its shade must not show).
+        server.runCommand("tp @p -57.5 -50 48.5 180 55");
+        context.waitTicks(25);
+        context.takeScreenshot("cloakonly_top_down_tree");
+        server.runCommand("tp @p -57.5 -46 44.5 180 80");
+        context.waitTicks(25);
+        context.takeScreenshot("cloakonly_straight_down_tree");
     }
 
     private static ServerPlayer player(MinecraftServer server)

@@ -9,14 +9,17 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Leaves out the mixins of the vanilla view backend when another mod (Sodium and the like) replaces vanilla's chunk
- * rendering: they hook into methods that mod overwrites, and the game would not start (see the client's ViewBackend).
+ * Picks the mixins of the view backend in use (see the client's ViewBackend): the vanilla ones are left out when another
+ * mod (Sodium and the like) replaces vanilla's chunk rendering, as they hook into methods that mod overwrites and the
+ * game would not start; the Sodium ones only go in with a Sodium version they were made for.
  */
 public class GlassMixinPlugin implements IMixinConfigPlugin
 {
     private static final String PACKAGE = "ryzlar.glass.client.mixin.";
     /** Mixins only for vanilla's chunk rendering. */
     private static final Set<String> VANILLA_ONLY = Set.of("VanillaSectionsMixin", "LevelRendererAccessor", "SectionOcclusionGraphAccessor");
+    /** Mixins into Sodium itself (the Sodium view backend), only with a Sodium version they were made for. */
+    private static final Set<String> SODIUM_ONLY = Set.of("SodiumWorldRendererMixin");
 
     @Override
     public void onLoad(String mixinPackage)
@@ -32,9 +35,14 @@ public class GlassMixinPlugin implements IMixinConfigPlugin
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName)
     {
-        if(mixinClassName.startsWith(PACKAGE) && VANILLA_ONLY.contains(mixinClassName.substring(PACKAGE.length())))
+        String name = mixinClassName.startsWith(PACKAGE) ? mixinClassName.substring(PACKAGE.length()) : mixinClassName;
+        if(VANILLA_ONLY.contains(name))
         {
             return RendererMods.replacing() == null;
+        }
+        if(SODIUM_ONLY.contains(name))
+        {
+            return RendererMods.sodiumBackend();
         }
         return true;
     }

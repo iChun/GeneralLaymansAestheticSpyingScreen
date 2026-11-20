@@ -96,9 +96,9 @@ What this means for this fork:
 
 The mod is needed on both the client and the server.
 
-**Sodium and Iris:** the mod runs with them, but GLASS screens and cloaks are not drawn yet with their renderer
-(screens show a white glow, cloaks plain glass, and you get a message about it when you join). Everything else
-works. Support for drawing them with Sodium is planned.
+**Sodium and Iris:** screens and cloaks are drawn with Sodium's renderer too (Sodium 0.7, and Iris without a shader
+pack). With an Iris shader pack on, or another Sodium version or fork, they are not drawn (screens show a white glow,
+cloaks plain glass, and you get a message about it when you join); everything else works.
 
 ## Building
 
