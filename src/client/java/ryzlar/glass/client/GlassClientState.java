@@ -90,6 +90,12 @@ public final class GlassClientState implements GlassClientBridge
     }
 
     @Override
+    public void openTome(@org.jetbrains.annotations.Nullable String page)
+    {
+        ryzlar.glass.client.tome.TomeClient.open(page);
+    }
+
+    @Override
     public void openWirelessScreen(GlassWirelessBlockEntity wireless)
     {
         Minecraft.getInstance().setScreen(new WirelessProjectorScreen(wireless));

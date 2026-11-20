@@ -22,6 +22,7 @@ public class GlassClient implements ClientModInitializer
         GlassClientBridge.set(GlassClientState.INSTANCE);
         GlassNetClient.init();
         ryzlar.glass.client.holo.HoloClient.init();
+        ryzlar.glass.client.tome.TomeClient.init();
 
         BlockRenderLayerMap.putBlocks(ChunkSectionLayer.CUTOUT, GlassRegistry.GLASS_EXTENSION, GlassRegistry.GLASS_PROJECTOR, GlassRegistry.GLASS_WIRELESS_EXTENSION);
 

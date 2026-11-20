@@ -1,0 +1,15 @@
+{
+  "title": "GLASS Terminal",
+  "items": [
+    "generallaymansaestheticspyingscreen:glass_terminal"
+  ],
+  "scene": "screen",
+  "body": [
+    "The terminal is the camera. It looks towards where you stood when you placed it (place it from above or below to make it look down or up).",
+    "Right-click it to make a [[channels|channel]] with this terminal as its camera: give the channel a name and a password. A channel has one camera; the owner can move it to another terminal later.",
+    "Breaking the terminal takes the channel's camera offline, but the channel itself stays. It is as tough as obsidian.",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:glass_terminal"
+    }
+  ]
+}

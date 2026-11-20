@@ -26,6 +26,7 @@ public class Glass implements ModInitializer
     {
         GlassConfig.load();
         GlassRegistry.init();
+        ryzlar.glass.tome.TomeGift.init();
         GlassSounds.init();
         if(ryzlar.glass.gadget.GadgetFeature.ENABLED)
         {

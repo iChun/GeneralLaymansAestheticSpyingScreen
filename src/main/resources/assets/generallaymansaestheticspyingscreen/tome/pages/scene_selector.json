@@ -1,0 +1,14 @@
+{
+  "title": "Scene Selector",
+  "items": [
+    "generallaymansaestheticspyingscreen:glass_scene_selector"
+  ],
+  "scene": "selector",
+  "body": [
+    "The scene selector switches a screen between channels. Place it within 16 blocks of a projector, right-click it, link it, and add up to 8 scenes.",
+    "Pick a scene on its panel, or give it a redstone pulse to show the next one. The new picture wipes over the old one.",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:glass_scene_selector"
+    }
+  ]
+}

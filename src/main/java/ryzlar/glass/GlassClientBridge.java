@@ -37,6 +37,9 @@ public interface GlassClientBridge
 
     default void onGlassClicked(BlockPos pos) {}
 
+    /** The GLASS Tome was used: open it (at a page, or where it was left when null). */
+    default void openTome(@org.jetbrains.annotations.Nullable String page) {}
+
     /** A GLASS tablet was used: open its screen. */
     default void openTabletScreen(net.minecraft.world.InteractionHand hand) {}
 

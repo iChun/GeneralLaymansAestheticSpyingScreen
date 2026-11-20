@@ -5,6 +5,7 @@
   "plugin": "ryzlar.glass.client.mixin.GlassMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "AbstractContainerScreenAccessor",
     "CameraMixin",
     "ClientLevelMixin",
     "CloudRendererMixin",

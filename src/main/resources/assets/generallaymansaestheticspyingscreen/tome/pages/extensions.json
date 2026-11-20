@@ -1,0 +1,14 @@
+{
+  "title": "GLASS Extensions",
+  "items": [
+    "generallaymansaestheticspyingscreen:glass_extension"
+  ],
+  "scene": "screen",
+  "body": [
+    "Extensions are the glass the picture spreads over. Any extensions touching the projector, or touching each other, become one screen, up to 40 blocks from the projector.",
+    "Punch a screen and it ripples. Seen from behind, a screen shows its glowing back instead of the picture.",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:glass_extension"
+    }
+  ]
+}

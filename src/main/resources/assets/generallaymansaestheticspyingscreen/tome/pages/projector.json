@@ -1,0 +1,15 @@
+{
+  "title": "GLASS Projector",
+  "items": [
+    "generallaymansaestheticspyingscreen:glass_projector"
+  ],
+  "scene": "screen",
+  "body": [
+    "Put the projector in a wall of [[extensions|GLASS Extensions]] (or on its own) and right-click it to choose a [[channels|channel]]. Give it a redstone signal and the screen builds itself out of the glass, starting at the projector.",
+    "Switching to another channel while it is on wipes the new picture over the old one. Taking the signal away switches it off.",
+    "The same screen also holds the [[cloak|cloak]] settings.",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:glass_projector"
+    }
+  ]
+}

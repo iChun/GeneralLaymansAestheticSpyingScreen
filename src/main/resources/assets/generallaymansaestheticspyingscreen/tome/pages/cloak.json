@@ -1,0 +1,12 @@
+{
+  "title": "Cloak",
+  "items": [
+    "generallaymansaestheticspyingscreen:glass_projector"
+  ],
+  "scene": "cloak",
+  "body": [
+    "In cloak mode a projector needs no channel: its glass shows what lies behind it, as if the blocks right behind the glass were not there. Turn it on in the projector's screen and set how many blocks deep it hides.",
+    "Give it a redstone signal and the glass, and whatever is behind it, disappears from every side you can see it from. The ground under the hidden part is rebuilt from its surroundings.",
+    "A cloak has limits (how much glass, how deep); [[amplifier|cloak amplifiers]] raise them."
+  ]
+}

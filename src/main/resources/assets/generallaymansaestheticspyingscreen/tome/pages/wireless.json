@@ -1,0 +1,14 @@
+{
+  "title": "Wireless Extensions",
+  "items": [
+    "generallaymansaestheticspyingscreen:glass_wireless_extension"
+  ],
+  "scene": "wireless",
+  "body": [
+    "Wireless extensions make a floating screen between them, without any glass in between. Right-click one to link it to a projector within 64 blocks (only to a projector whose channel you may see).",
+    "The projector's WIRELESS screen shows the extensions in order and lets you reorder or remove them while it is off. Four of them in the corners of a rectangle can also raise a [[cloak_field|cloak field]].",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:glass_wireless_extension"
+    }
+  ]
+}

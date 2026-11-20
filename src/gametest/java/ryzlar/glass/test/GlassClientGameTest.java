@@ -183,6 +183,54 @@ public class GlassClientGameTest implements FabricClientGameTest
         context.takeScreenshot("cloakonly_straight_down_tree");
     }
 
+    /**
+     * The GLASS Tome: given once on joining, opens at a page, its links and look-up work, and every page with its scene
+     * (screenshots of each scene at a few moments and from two sides when {@code all}, else only a few).
+     */
+    private static void tome(ClientGameTestContext context, TestServerContext server, boolean all)
+    {
+        check(server.computeOnServer(s -> player(s).getInventory().countItem(GlassRegistry.GLASS_TOME) == 1), "the tome is given on the first join");
+        check(server.computeOnServer(s -> !ryzlar.glass.tome.TomeGift.give(player(s))), "and only once");
+        check(context.computeOnClient(mc -> ryzlar.glass.client.tome.TomeBook.get().pages().size() >= 14), "the tome has its pages");
+        check(context.computeOnClient(mc -> {
+            net.minecraft.world.item.CreativeModeTabs.tryRebuildTabContents(mc.player.connection.enabledFeatures(), true, mc.level.registryAccess());
+            net.minecraft.world.item.CreativeModeTab tab = net.minecraft.core.registries.BuiltInRegistries.CREATIVE_MODE_TAB.getValue(GlassRegistry.TAB);
+            return tab != null && tab.getDisplayItems().size() == 11 && tab.getDisplayItems().iterator().next().is(GlassRegistry.GLASS_TOME);
+        }), "GLASS has its own creative tab, the tome first");
+        check(context.computeOnClient(mc -> ryzlar.glass.client.tome.TomeRecipes.of(ryzlar.glass.Glass.id("glass_projector")) != null
+                && ryzlar.glass.client.tome.TomeRecipes.of(ryzlar.glass.Glass.id("glass_tome")) != null), "the tome reads the mod's recipes");
+        context.runOnClient(mc -> ryzlar.glass.client.tome.TomeClient.lookUp(ryzlar.glass.Glass.id("cloak_amplifier")));
+        context.waitTicks(10);
+        check(context.computeOnClient(mc -> mc.screen instanceof ryzlar.glass.client.tome.TomeScreen screen && screen.page() != null
+                && screen.page().id().equals("amplifier")), "looking up an item opens its page");
+        for(ryzlar.glass.client.tome.TomeBook.Page page : context.computeOnClient(mc -> ryzlar.glass.client.tome.TomeBook.get().pages()))
+        {
+            if(!all && !List.of("welcome", "cloak", "holo_cube").contains(page.id()))
+            {
+                continue;
+            }
+            context.runOnClient(mc -> ((ryzlar.glass.client.tome.TomeScreen)mc.screen).open(page));
+            float[] times = all ? new float[] { 2F, 5F, 9F } : new float[] { 5F };
+            for(float time : times)
+            {
+                context.runOnClient(mc -> ((ryzlar.glass.client.tome.TomeScreen)mc.screen).sceneAt(time, -35F, 28F));
+                context.waitTicks(2);
+                context.takeScreenshot("tome_" + page.id() + "_t" + (int)time);
+            }
+            if(all)
+            {
+                context.runOnClient(mc -> ((ryzlar.glass.client.tome.TomeScreen)mc.screen).sceneAt(5F, 140F, 50F));
+                context.waitTicks(2);
+                context.takeScreenshot("tome_" + page.id() + "_turned");
+                context.runOnClient(mc -> ((ryzlar.glass.client.tome.TomeScreen)mc.screen).scrollTo(1000));
+                context.waitTicks(2);
+                context.takeScreenshot("tome_" + page.id() + "_bottom");
+            }
+        }
+        context.runOnClient(mc -> mc.setScreen(null));
+        context.waitTicks(5);
+    }
+
     private static ServerPlayer player(MinecraftServer server)
     {
         return server.getPlayerList().getPlayers().getFirst();
@@ -243,6 +291,11 @@ public class GlassClientGameTest implements FabricClientGameTest
             if("cloak".equals(System.getenv("GLASS_TEST_ONLY")))
             {
                 cloakOnly(singleplayer, context, server);
+                return;
+            }
+            tome(context, server, "tome".equals(System.getenv("GLASS_TEST_ONLY")));
+            if("tome".equals(System.getenv("GLASS_TEST_ONLY")))
+            {
                 return;
             }
 

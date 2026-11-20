@@ -1,0 +1,10 @@
+{
+  "title": "Channels",
+  "items": [],
+  "body": [
+    "Every screen shows a channel. Channel names are unique on the server, and each belongs to the player who made it.",
+    "Your own channels are always yours to use. Someone else's needs its password once: after that you can show it on your projectors until the owner changes the password.",
+    "The owner can change the password, move the camera to another terminal, or delete the channel. Passwords are stored hashed, and too many wrong guesses lock you out for a minute.",
+    "Server owners can set how many channels a player may own in config/generallaymansaestheticspyingscreen.json."
+  ]
+}

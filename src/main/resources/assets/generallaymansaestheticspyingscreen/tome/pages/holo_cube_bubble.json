@@ -1,0 +1,12 @@
+{
+  "title": "The bubble",
+  "items": [
+    "generallaymansaestheticspyingscreen:holo_cube"
+  ],
+  "scene": "cube_bubble",
+  "body": [
+    "Set a scanned cube down anywhere and right-click it: a glowing bubble grows out of it with the scan inside, shrunk to ten blocks across. From outside you see it in blue; step in and it has its real colours, under the scanned sky.",
+    "It is only a picture over the real world, which is never touched. Where the real world is empty you can stand on the scan's ground; you walk straight through the rest. Use a scanned chest to look inside it.",
+    "Right-click again to switch it off."
+  ]
+}

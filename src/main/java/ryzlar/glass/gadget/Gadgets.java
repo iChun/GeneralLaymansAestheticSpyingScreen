@@ -12,7 +12,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
-import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.level.block.Block;
@@ -75,12 +74,12 @@ public final class Gadgets
         FabricDefaultAttributeRegistry.register(HOLO_DECOY_ENTITY, HoloDecoyEntity.attributes());
         GadgetNetworking.init();
         OpticalCamo.init();
-        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.REDSTONE_BLOCKS).register(entries -> {
+        ItemGroupEvents.modifyEntriesEvent(ryzlar.glass.GlassRegistry.TAB).register(entries -> {
             entries.accept(HARD_LIGHT_EMITTER);
             entries.accept(MOTION_SENSOR);
             entries.accept(HOLO_MAP_TABLE);
         });
-        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.TOOLS_AND_UTILITIES).register(entries -> {
+        ItemGroupEvents.modifyEntriesEvent(ryzlar.glass.GlassRegistry.TAB).register(entries -> {
             entries.accept(GLASS_TABLET);
             entries.accept(HOLO_DECOY);
             entries.accept(OPTICAL_CAMO_MODULE);

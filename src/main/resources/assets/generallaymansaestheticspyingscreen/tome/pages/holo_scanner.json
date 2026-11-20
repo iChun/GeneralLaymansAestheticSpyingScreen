@@ -1,0 +1,15 @@
+{
+  "title": "Holo Scanner",
+  "items": [
+    "generallaymansaestheticspyingscreen:holo_scanner",
+    "generallaymansaestheticspyingscreen:projection_crystal"
+  ],
+  "scene": "hologram",
+  "body": [
+    "The scanner captures an area of blocks into a Projection Crystal. Right-click it to set where the area is (up to 32 blocks away) and how big (up to 32 each way), and give the projection a name.",
+    "Each scan costs one amethyst shard and gives you a crystal. Put it in a [[holo_projector|Holo Projector]] to see it.",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:holo_scanner"
+    }
+  ]
+}

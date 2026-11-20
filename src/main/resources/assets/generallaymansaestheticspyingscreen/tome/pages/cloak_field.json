@@ -1,0 +1,11 @@
+{
+  "title": "Cloak field",
+  "items": [
+    "generallaymansaestheticspyingscreen:glass_wireless_extension"
+  ],
+  "scene": "field",
+  "body": [
+    "Put four [[wireless|wireless extensions]] in the corners of a rectangle on one level (at least two blocks apart each way) and link all four to a projector in cloak mode. Turn FIELD on and set its height.",
+    "Powered, walls and a roof rise out of the ground between them and hide everything inside, from every side and from above. Step inside and you see the inside of the field as glowing edges."
+  ]
+}

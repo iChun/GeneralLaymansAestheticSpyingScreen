@@ -1,0 +1,15 @@
+{
+  "title": "Cloak Amplifier",
+  "items": [
+    "generallaymansaestheticspyingscreen:cloak_amplifier"
+  ],
+  "scene": "amplifier",
+  "body": [
+    "A cloak may only be so big. Each amplifier touching the projector (up to two) raises its limits:",
+    "No amplifier: fields up to 32x32 and 16 high, 256 glass blocks, 16 deep. One: 48x48, 24 high, 576 glass, 24 deep. Two: 64x64, 32 high, 1024 glass, 32 deep.",
+    "Take an amplifier away from a running cloak that no longer fits and it switches off.",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:cloak_amplifier"
+    }
+  ]
+}

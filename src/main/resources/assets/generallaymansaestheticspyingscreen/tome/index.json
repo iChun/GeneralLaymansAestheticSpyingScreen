@@ -1,0 +1,43 @@
+{
+  "chapters": [
+    {
+      "title": "Getting started",
+      "pages": [
+        "welcome"
+      ]
+    },
+    {
+      "title": "Screens",
+      "pages": [
+        "terminal",
+        "channels",
+        "projector",
+        "extensions",
+        "wireless",
+        "scene_selector"
+      ]
+    },
+    {
+      "title": "Cloak",
+      "pages": [
+        "cloak",
+        "cloak_field",
+        "amplifier"
+      ]
+    },
+    {
+      "title": "Hologram kit",
+      "pages": [
+        "holo_scanner",
+        "holo_projector"
+      ]
+    },
+    {
+      "title": "Holo Cube",
+      "pages": [
+        "holo_cube",
+        "holo_cube_bubble"
+      ]
+    }
+  ]
+}

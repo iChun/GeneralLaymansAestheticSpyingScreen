@@ -1,0 +1,19 @@
+{
+  "title": "Holo Projector",
+  "items": [
+    "generallaymansaestheticspyingscreen:holo_projector",
+    "generallaymansaestheticspyingscreen:holo_emitter"
+  ],
+  "scene": "hologram",
+  "body": [
+    "Use a Projection Crystal on the projector to put it in (sneak + right-click with an empty hand takes it out). Powered by redstone, it projects the crystal's blocks above it.",
+    "Each side of a hologram only shows where the projector or an emitter can see it, so put Holo Emitters around it (up to 16, within 16 blocks) and link them from the projector's screen.",
+    "The screen also sets the look (classic, blue or solid), the scale and the rotation.",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:holo_projector"
+    },
+    {
+      "recipe": "generallaymansaestheticspyingscreen:holo_emitter"
+    }
+  ]
+}

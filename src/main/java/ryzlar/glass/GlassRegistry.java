@@ -1,6 +1,5 @@
 package ryzlar.glass;
 
-import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -8,7 +7,6 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
@@ -71,6 +69,7 @@ public final class GlassRegistry
     public static final EntityType<HoloCubeEntity> HOLO_CUBE_ENTITY = registerEntity("holo_cube",
             EntityType.Builder.<HoloCubeEntity>of(HoloCubeEntity::new, MobCategory.MISC).sized(0.5F, 0.5F).clientTrackingRange(10).updateInterval(2));
     public static final Item PROJECTION_CRYSTAL = registerItem("projection_crystal", properties -> new Item(properties.stacksTo(1).rarity(Rarity.RARE)));
+    public static final Item GLASS_TOME = registerItem("glass_tome", properties -> new ryzlar.glass.tome.GlassTomeItem(properties.stacksTo(1).rarity(Rarity.UNCOMMON)));
 
     public static final BlockEntityType<GlassBaseBlockEntity> GLASS_EXTENSION_BE = registerBlockEntity("glass_extension",
             FabricBlockEntityTypeBuilder.create(GlassBaseBlockEntity::new, GLASS_EXTENSION).build());
@@ -112,6 +111,9 @@ public final class GlassRegistry
         return Registry.register(BuiltInRegistries.ENTITY_TYPE, key, builder.build(key));
     }
 
+    /** GLASS's own creative tab. */
+    public static final ResourceKey<net.minecraft.world.item.CreativeModeTab> TAB = ResourceKey.create(Registries.CREATIVE_MODE_TAB, Glass.id("glass"));
+
     public static Item registerItem(String name, Function<Item.Properties, Item> factory)
     {
         ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, Glass.id(name));
@@ -129,17 +131,23 @@ public final class GlassRegistry
         BuiltInRegistries.ITEM.addAlias(Glass.id("holo_drone"), Glass.id("holo_cube"));
         BuiltInRegistries.ENTITY_TYPE.addAlias(Glass.id("holo_drone"), Glass.id("holo_cube"));
         BuiltInRegistries.DATA_COMPONENT_TYPE.addAlias(Glass.id("drone_scan"), Glass.id("cube_scan"));
-        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.REDSTONE_BLOCKS).register(entries -> {
-            entries.accept(GLASS_PROJECTOR);
-            entries.accept(GLASS_WIRELESS_EXTENSION);
-            entries.accept(GLASS_EXTENSION);
-            entries.accept(GLASS_TERMINAL);
-            entries.accept(GLASS_SCENE_SELECTOR);
-            entries.accept(CLOAK_AMPLIFIER);
-            entries.accept(HOLO_SCANNER);
-            entries.accept(HOLO_PROJECTOR);
-            entries.accept(HOLO_EMITTER);
-            entries.accept(HOLO_CUBE);
-        });
+        //GLASS's own creative tab: the tome first, then in the order you set things up.
+        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB, net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup.builder()
+                .icon(() -> new net.minecraft.world.item.ItemStack(GLASS_PROJECTOR))
+                .title(net.minecraft.network.chat.Component.translatable("itemGroup.generallaymansaestheticspyingscreen"))
+                .displayItems((parameters, entries) -> {
+                    entries.accept(GLASS_TOME);
+                    entries.accept(GLASS_TERMINAL);
+                    entries.accept(GLASS_PROJECTOR);
+                    entries.accept(GLASS_EXTENSION);
+                    entries.accept(GLASS_WIRELESS_EXTENSION);
+                    entries.accept(GLASS_SCENE_SELECTOR);
+                    entries.accept(CLOAK_AMPLIFIER);
+                    entries.accept(HOLO_SCANNER);
+                    entries.accept(HOLO_PROJECTOR);
+                    entries.accept(HOLO_EMITTER);
+                    entries.accept(HOLO_CUBE);
+                })
+                .build());
     }
 }

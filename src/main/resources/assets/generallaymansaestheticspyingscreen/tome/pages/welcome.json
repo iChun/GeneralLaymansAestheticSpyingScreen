@@ -1,0 +1,15 @@
+{
+  "title": "Welcome to GLASS",
+  "items": [
+    "generallaymansaestheticspyingscreen:glass_tome"
+  ],
+  "scene": "screen",
+  "body": [
+    "GLASS turns walls of glass into screens. A [[terminal|GLASS Terminal]] is a camera; a [[projector|GLASS Projector]] in a wall of [[extensions|GLASS Extensions]] shows what it sees, as soon as it gets a redstone signal.",
+    "The same glass can also [[cloak|cloak]] what is behind it, so your base disappears, and the hologram kit and the [[holo_cube|Holo Cube]] capture places and project them back.",
+    "Use the index on the left, or search. Pressing the look-up key (G) over a GLASS item in your inventory opens its page. Drag a scene to turn it.",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:glass_tome"
+    }
+  ]
+}

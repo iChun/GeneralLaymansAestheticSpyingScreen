@@ -1,0 +1,14 @@
+{
+  "title": "Scanning",
+  "items": [
+    "generallaymansaestheticspyingscreen:holo_cube"
+  ],
+  "scene": "cube_scan",
+  "body": [
+    "Set the cube down and right-click it: it rises, a grid grows out of it, and the ball of the world around it, fifteen blocks across, is digitized: the blocks, what is in the chests, signs, banners and beds, frames and armor stands, the animals and mobs, and the time and weather.",
+    "Sneak + right-click (or hit it) to pick it up with its scan. Sneak + right-click in the air with it wipes the scan.",
+    {
+      "recipe": "generallaymansaestheticspyingscreen:holo_cube"
+    }
+  ]
+}
