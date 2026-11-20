@@ -370,7 +370,7 @@ public final class SpyViewRenderer
     {
         Minecraft mc = Minecraft.getInstance();
         long thisFrame = frame++;
-        if(mc.level == null || views.isEmpty() || rendering != null || capturing)
+        if(!ViewBackend.current().drawsViews() || mc.level == null || views.isEmpty() || rendering != null || capturing)
         {
             return;
         }

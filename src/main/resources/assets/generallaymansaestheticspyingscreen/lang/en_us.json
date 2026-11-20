@@ -54,6 +54,7 @@
   "glass.msg.pickProjector": "Pick a projector first.",
   "glass.msg.badPassword": "Passwords are 4-64 characters.",
   "glass.msg.tooManyAttempts": "Too many failed attempts. Wait a minute.",
+  "glass.msg.viewsUnsupported": "GLASS: screens and cloaks cannot be drawn with %s yet, so they show a glow or plain glass. Everything else works.",
   "glass.msg.tooManyPasswords": "Too many new passwords. Wait a minute.",
   "glass.msg.wirelessTooFar": "That projector is too far away (more than %s blocks).",
   "glass.msg.badChannelName": "Channel names are 1-24 letters, digits, spaces, _ or -.",

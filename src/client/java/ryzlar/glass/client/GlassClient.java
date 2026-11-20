@@ -47,6 +47,14 @@ public class GlassClient implements ClientModInitializer
         WorldRenderEvents.BEFORE_BLOCK_OUTLINE.register((context, hit) -> !(hit instanceof BlockHitResult block
                 && block.getType() == HitResult.Type.BLOCK
                 && GlassClientState.INSTANCE.isHiddenByCloak(block.getBlockPos(), context.camera().getPosition())));
+        //With a renderer the views cannot use yet (Sodium and the like), say so once per world joined.
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> client.execute(() -> {
+            net.minecraft.network.chat.Component message = ryzlar.glass.client.render.ViewBackend.current().message();
+            if(message != null && client.player != null)
+            {
+                client.player.displayClientMessage(message.copy().withStyle(net.minecraft.ChatFormatting.GOLD), false);
+            }
+        }));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
             GlassClientState.INSTANCE.clear();
             ryzlar.glass.client.render.LinkHighlight.reset();

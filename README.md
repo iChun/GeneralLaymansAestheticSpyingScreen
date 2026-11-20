@@ -96,6 +96,10 @@ What this means for this fork:
 
 The mod is needed on both the client and the server.
 
+**Sodium and Iris:** the mod runs with them, but GLASS screens and cloaks are not drawn yet with their renderer
+(screens show a white glow, cloaks plain glass, and you get a message about it when you join). Everything else
+works. Support for drawing them with Sodium is planned.
+
 ## Building
 
 Gradle has to run on **JDK 25** (Fabric Loom 1.18 needs it); the mod itself targets Java 21.
@@ -118,3 +122,10 @@ To run the dedicated server tests (the mod without any client code):
 ```bash
 ./gradlew runGameTest
 ```
+
+Release checks:
+
+- `GLASS_TEST_ONLY=stress ./gradlew runClientGameTest`: a world full of cloaks and screens, a dedicated server joined
+  twice, and a holo scan bigger than one packet.
+- `./gradlew prodServer` / `./gradlew prodClient`: the built jar as players get it, on a real server or client.
+- Add `-PwithSodium` or `-PwithIris` to a client run to try it with Sodium or Iris.

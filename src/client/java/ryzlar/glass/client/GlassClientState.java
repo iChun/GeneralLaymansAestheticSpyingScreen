@@ -457,6 +457,10 @@ public final class GlassClientState implements GlassClientBridge
      */
     public boolean isHiddenByCloak(BlockPos pos, Vec3 eye)
     {
+        if(!ryzlar.glass.client.render.ViewBackend.current().drawsViews())
+        {
+            return false; //cloaks are not drawn with this renderer, so nothing is hidden
+        }
         for(TerminalPlacement placement : terminalPlacements.values())
         {
             if(!placement.cloak || !placement.isValid())

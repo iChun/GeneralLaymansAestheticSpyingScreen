@@ -2,6 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "ryzlar.glass.client.mixin",
+  "plugin": "ryzlar.glass.client.mixin.GlassMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "client": [
     "CameraMixin",
@@ -15,7 +16,8 @@
     "LivingEntityRendererMixin",
     "MinecraftMixin",
     "SectionOcclusionGraphAccessor",
-    "SkyRendererMixin"
+    "SkyRendererMixin",
+    "VanillaSectionsMixin"
   ],
   "injectors": {
     "defaultRequire": 1
