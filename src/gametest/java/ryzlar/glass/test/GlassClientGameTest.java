@@ -745,7 +745,6 @@ public class GlassClientGameTest implements FabricClientGameTest
             server.runCommand("setblock 101 -60 -7 minecraft:chest[facing=east]{Items:[{Slot:0b,id:\"minecraft:diamond\",count:3}]}");
             server.runCommand("setblock 105 -59 -7 minecraft:oak_wall_sign[facing=west]{front_text:{messages:[\"GLASS\",\"\",\"\",\"\"]}}");
             server.runCommand("summon minecraft:sheep 104.5 -60 -6.5 {NoAI:1b,Color:3}");
-            server.runCommand("fill 112 -61 -24 140 -61 12 minecraft:white_concrete");
             server.runCommand("tp @p 103.5 -60 -5.5 180 20");
             settle(singleplayer, context);
             server.runCommand("item replace entity @p weapon.mainhand with generallaymansaestheticspyingscreen:holo_cube");
@@ -808,7 +807,12 @@ public class GlassClientGameTest implements FabricClientGameTest
             //Set it down in the open and switch it on: the bubble grows out of it, the scanned ball inside, 1:1.
             server.runCommand("tp @p 126.5 -60 7.5 180 0");
             settle(singleplayer, context);
+            //Only now, with the player here, is this ground loaded (filled from the room it was not, and the check below
+            //looked for concrete that was never put down).
+            server.runCommand("fill 112 -61 -24 140 -61 12 minecraft:white_concrete");
             context.waitTicks(5);
+            check(server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(126, -61, 4)).is(net.minecraft.world.level.block.Blocks.WHITE_CONCRETE)),
+                    "the open ground is concrete");
             BlockPos ground = new BlockPos(126, -61, 4);
             context.runOnClient(mc -> mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND,
                     new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(ground).add(0, 0.5, 0), net.minecraft.core.Direction.UP, ground, false)));
