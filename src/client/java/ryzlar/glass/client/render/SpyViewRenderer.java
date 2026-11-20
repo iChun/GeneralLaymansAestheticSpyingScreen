@@ -78,7 +78,7 @@ public final class SpyViewRenderer
 
     /**
      * How a cloak's view is drawn, by how far away the cloak is and how much of the screen it takes up: the share of its
-     * on-screen size it is drawn at, and every how many frames.
+     * on-screen size it is drawn at, and every how many frames (near, every frame: every other frame looked choppy).
      */
     enum Tier
     {
@@ -96,11 +96,11 @@ public final class SpyViewRenderer
         }
     }
 
-    /** Nearer than this (blocks to the cloak's glass), a cloak is drawn every frame at its best. */
+    /** Nearer than this (blocks to the cloak's glass), a cloak is drawn at its best. */
     private static final double NEAR_DISTANCE = 32D;
-    /** Nearer than this, a cloak is drawn every other frame; further, a few times a second. */
+    /** Nearer than this, a cloak is drawn smaller; further, smaller still and a few times a second. */
     private static final double MID_DISTANCE = 96D;
-    /** Taking up more than this share of the screen, a cloak is drawn every frame at its best wherever it is. */
+    /** Taking up more than this share of the screen, a cloak is drawn at its best wherever it is. */
     private static final float NEAR_COVERAGE = 0.2F;
     /**
      * Room left round a cloak's part of the screen, as a share of its size: an image drawn a few frames ago must still
@@ -109,6 +109,9 @@ public final class SpyViewRenderer
     private static final float[] RECT_MARGIN = { 0.04F, 0.1F, 0.25F };
     /** The size of a cloak's image in pixels is rounded up to this, so it is not made anew every time it grows a pixel. */
     private static final int TARGET_STEP = 32;
+    /** A cloak's view draws the world out to this share of the render distance, but at least this many chunks. */
+    private static final float CLOAK_DISTANCE = 2F / 3F;
+    private static final int CLOAK_MIN_CHUNKS = 6;
     /** A cropped view's culling always takes in the screen this far round its middle (see render). */
     private static final float CULL_CENTRE = 0.25F;
     /** Suffix of a view that is being replaced: it keeps drawing until the new view has wiped over it. */
@@ -593,8 +596,17 @@ public final class SpyViewRenderer
         view.camera.configure(level, entity, position, rotation, partialTick);
 
         float fov = gr.glass$getFov(mainCamera, partialTick, true);
+        //A cloak's view draws the world only so far out (chunks and mobs further away are left out, and the fog comes in
+        //that much nearer): drawing the world again is what a cloak costs, most of it far away, and little of that shows.
+        int renderDistance = mc.options.getEffectiveRenderDistance();
+        int viewDistance = placement.cloak ? Math.min(renderDistance, Math.max(CLOAK_MIN_CHUNKS, Math.round(renderDistance * CLOAK_DISTANCE))) : renderDistance;
+        Matrix4f cullBase = gameRenderer.getProjectionMatrix(Math.max(fov, mc.options.fov().get().intValue()));
+        if(viewDistance < renderDistance)
+        {
+            cullBase = withFarPlane(cullBase, viewDistance * 16F);
+        }
         //A cropped view also culls to its part of the screen: only the sections behind the cloak are drawn.
-        Matrix4f cullProjection = new Matrix4f(cullCropMatrix).mul(gameRenderer.getProjectionMatrix(Math.max(fov, mc.options.fov().get().intValue())));
+        Matrix4f cullProjection = new Matrix4f(cullCropMatrix).mul(cullBase);
         //Same projection as the world (it includes view bobbing): rebuilding it from the FOV made the view sway against the glass while walking.
         //Its far plane is pushed much further out, because the clipping below tilts the far plane towards the camera: with
         //the terminal right against blocks and the screen seen at an angle, it cut the view off diagonally.
@@ -614,7 +626,7 @@ public final class SpyViewRenderer
         FogRenderer fogRenderer = gr.glass$getFogRenderer();
         boolean foggy = level.effects().isFoggyAt(view.camera.getBlockPosition().getX(), view.camera.getBlockPosition().getZ())
                 || mc.gui.getBossOverlay().shouldCreateWorldFog();
-        Vector4f fogColor = fogRenderer.setupFog(view.camera, mc.options.getEffectiveRenderDistance(), foggy, deltaTracker, gameRenderer.getDarkenWorldAmount(partialTick), level);
+        Vector4f fogColor = fogRenderer.setupFog(view.camera, viewDistance, foggy, deltaTracker, gameRenderer.getDarkenWorldAmount(partialTick), level);
         view.fogColor = new Vector4f(fogColor);
         GpuBufferSlice fogBuffer = fogRenderer.getBuffer(FogRenderer.FogMode.WORLD);
 
@@ -699,6 +711,20 @@ public final class SpyViewRenderer
             lr.glass$setPrevCamRotX(savedPrevCamRotX);
             lr.glass$setPrevCamRotY(savedPrevCamRotY);
         }
+    }
+
+    /** A projection with its far plane moved to {@code far} blocks (for culling: what lies further is left out). */
+    private static Matrix4f withFarPlane(Matrix4f base, float far)
+    {
+        float near = base.m32() / (base.m22() - 1F);
+        if(!Float.isFinite(near) || near <= 0F || far <= near)
+        {
+            return base;
+        }
+        Matrix4f matrix = new Matrix4f(base);
+        matrix.m22((far + near) / (near - far));
+        matrix.m32(2F * far * near / (near - far));
+        return matrix;
     }
 
     /**
