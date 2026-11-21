@@ -243,7 +243,7 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
         PoseStack.Pose pose = poseStack.last();
         if(wireless && cloak && te instanceof GlassProjectorBlockEntity master && master.cloakFieldBox() != null)
         {
-            drawField(master, master.cloakFieldBox(), spy, key, placement, switchingOff, pose, buffers, partialTick);
+            drawField(master, master.cloakFieldBox(), spy, key, placement, switchingOff, punchPoint, ring, pose, buffers, partialTick);
             return;
         }
         if(wireless && te instanceof GlassProjectorBlockEntity master)
@@ -334,10 +334,13 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
     /**
      * A cloak field: four walls and a roof around the box between the corner extensions, each showing what lies behind
      * the whole box from that side. Switching on, the walls rise out of the ground with the nano front along their top
-     * edge, and the roof closes once they are up; switching off, they sink back.
+     * edge, and the roof closes once they are up; switching off, they sink back. Someone going through (or brushing
+     * against it) sends a ripple over the outside too ({@code punchPoint}, from the projector's centre, and its ring),
+     * and going through sets off a shockwave over the field (ScreenBack.drawShock).
      */
     private static void drawField(GlassProjectorBlockEntity master, net.minecraft.world.phys.AABB box, SpyViewRenderer spy, String key,
-                                  @org.jetbrains.annotations.Nullable TerminalPlacement placement, boolean switchingOff, PoseStack.Pose pose,
+                                  @org.jetbrains.annotations.Nullable TerminalPlacement placement, boolean switchingOff,
+                                  @org.jetbrains.annotations.Nullable Vec3 punchPoint, int[] ring, PoseStack.Pose pose,
                                   MultiBufferSource buffers, float partialTick)
     {
         Level level = master.getLevel();
@@ -417,6 +420,29 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
                 case EAST -> new float[][] { { x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 } };
                 default -> new float[][] { { x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 } };
             };
+            //A ripple from someone going through (or brushing against) this side, in the same field coordinates as the
+            //nano pixels below. Only on the side it happened on.
+            int[] hit = { 32767, 32767 };
+            int[] sideRing = { 0, 0 };
+            if(punchPoint != null)
+            {
+                float px = (float)punchPoint.x, py = (float)punchPoint.y, pz = (float)punchPoint.z;
+                float off = switch(side)
+                {
+                    case NORTH -> pz - z0;
+                    case SOUTH -> pz - z1;
+                    case WEST -> px - x0;
+                    case EAST -> px - x1;
+                    default -> py - y1;
+                };
+                if(Math.abs(off) < 0.75F)
+                {
+                    float hu = roof ? px - x0 : (px - x0) + (pz - z0);
+                    float hv = roof ? pz - z0 : py - y0;
+                    hit = new int[] { Mth.clamp(Math.round(hu * 32F), -32767, 32767), Mth.clamp(Math.round(hv * 32F), -32767, 32767) };
+                    sideRing = ring;
+                }
+            }
             for(float[] c : corners)
             {
                 //Position on the field for the nano pixels: along the wall and up it (the roof: across it).
@@ -425,10 +451,14 @@ public class GlassBlockEntityRenderer implements BlockEntityRenderer<GlassBaseBl
                 consumer.addVertex(pose, c[0], c[1], c[2])
                         .setColor(wave[0], wave[1], wave[2], wave[3])
                         .setUv(u, v)
-                        .setUv1(32767, 32767)
-                        .setUv2(0, 0)
+                        .setUv1(hit[0], hit[1])
+                        .setUv2(sideRing[0], sideRing[1])
                         .setNormal(pose, n.x, n.y, n.z);
             }
+        }
+        if(!switchingOff)
+        {
+            ScreenBack.drawShock(key, box, origin, pose, buffers, partialTick);
         }
     }
 

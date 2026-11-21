@@ -43,7 +43,19 @@ public final class ScreenBack
     private record Ripple(Vec3 point, long time) {}
 
     private static final Map<String, Ripple> RIPPLES = new HashMap<>();
+    /**
+     * A cloak field's shockwave: glitchy static over the field that clears in a sphere from where someone went through
+     * it. Going in, what the field hid appears as the wave passes; going out, it vanishes into the static.
+     */
+    private record Shock(Vec3 point, long time) {}
+    private static final Map<String, Shock> SHOCKS = new HashMap<>();
+    /** How long a shockwave lasts (ticks) and how fast it grows (blocks per tick). */
+    private static final float SHOCK_TICKS = 22F;
+    private static final float SHOCK_SPEED = 1.35F;
     private static final Map<String, Vec3> LAST_BODY = new HashMap<>();
+    /** Where other players near a cloak field were last tick ("screen key|uuid"), to see them go through it. */
+    private static final Map<String, Vec3> OTHER_BODIES = new HashMap<>();
+    private static final double OTHERS_RANGE = 96D;
     /** Simulation barriers drawn lately (world boxes), so walking through them ripples them too. */
     private record Barrier(AABB box, long seenAt) {}
     private static final Map<String, Barrier> BARRIERS = new HashMap<>();
@@ -61,12 +73,15 @@ public final class ScreenBack
         {
             RIPPLES.clear();
             LAST_BODY.clear();
+            OTHER_BODIES.clear();
+            SHOCKS.clear();
             return;
         }
         long now = mc.level.getGameTime();
         //The middle of the body: what goes through the screen.
         Vec3 body = mc.player.position().add(0D, mc.player.getBbHeight() * 0.55D, 0D);
         Set<String> active = new HashSet<>();
+        Set<String> activeOthers = new HashSet<>();
         for(GlassProjectorBlockEntity projector : GlassClientState.INSTANCE.loadedProjectors)
         {
             String key = projector.screenKey();
@@ -83,11 +98,41 @@ public final class ScreenBack
                 Vec3 onWall = nearestOnBoxSurface(box, body);
                 if(last != null && in != box.contains(last))
                 {
+                    //Through it: a ripple on both sides of the wall, and the shockwave.
                     ripple(key, onWall, now, true);
+                    GlassClientState.INSTANCE.addPunch(key, onWall);
+                    shock(key, onWall, now, in);
                 }
-                else if(in && onWall.distanceTo(body) < TOUCH)
+                else if(onWall.distanceTo(body) < TOUCH)
                 {
-                    ripple(key, onWall, now, false);
+                    //Brushing against it: from inside its back ripples, from outside its image.
+                    if(in)
+                    {
+                        ripple(key, onWall, now, false);
+                    }
+                    else
+                    {
+                        touchFront(key, onWall, now);
+                    }
+                }
+                //Other players going through ripple it too (seen from outside, that is all that gives them away).
+                for(net.minecraft.world.entity.player.Player other : mc.level.players())
+                {
+                    if(other == mc.player || other.isSpectator() || other.distanceToSqr(box.getCenter()) > OTHERS_RANGE * OTHERS_RANGE)
+                    {
+                        continue;
+                    }
+                    String bodyKey = key + "|" + other.getUUID();
+                    activeOthers.add(bodyKey);
+                    Vec3 otherBody = other.position().add(0D, other.getBbHeight() * 0.55D, 0D);
+                    Vec3 otherLast = OTHER_BODIES.put(bodyKey, otherBody);
+                    boolean otherIn = box.contains(otherBody);
+                    if(otherLast != null && otherIn != box.contains(otherLast))
+                    {
+                        Vec3 at = nearestOnBoxSurface(box, otherBody);
+                        ripple(key, at, now, true);
+                        GlassClientState.INSTANCE.addPunch(key, at);
+                    }
                 }
                 continue;
             }
@@ -130,7 +175,108 @@ public final class ScreenBack
             }
         }
         LAST_BODY.keySet().retainAll(active);
+        OTHER_BODIES.keySet().retainAll(activeOthers);
         RIPPLES.keySet().retainAll(active);
+        SHOCKS.keySet().retainAll(active);
+    }
+
+    /** A ripple on the outside of a cloak field (its image), at most every {@link #TOUCH_REPEAT} ticks. */
+    private static void touchFront(String key, Vec3 point, long now)
+    {
+        GlassClientState.Punch last = GlassClientState.INSTANCE.punchFor(key);
+        if(last != null && now - last.time() < TOUCH_REPEAT)
+        {
+            return;
+        }
+        GlassClientState.INSTANCE.addPunch(key, point);
+        Minecraft mc = Minecraft.getInstance();
+        if(mc.level != null)
+        {
+            mc.level.playLocalSound(point.x, point.y, point.z, ryzlar.glass.GlassSounds.RIPPLE, net.minecraft.sounds.SoundSource.BLOCKS,
+                    0.35F, 0.9F + mc.level.random.nextFloat() * 0.2F, false);
+        }
+    }
+
+    private static void shock(String key, Vec3 point, long now, boolean entering)
+    {
+        SHOCKS.put(key, new Shock(point, now));
+        Minecraft mc = Minecraft.getInstance();
+        if(mc.level != null)
+        {
+            mc.level.playLocalSound(point.x, point.y, point.z, entering ? ryzlar.glass.GlassSounds.NANO_DISSOLVE : ryzlar.glass.GlassSounds.CLOAK_ENGAGE,
+                    net.minecraft.sounds.SoundSource.BLOCKS, 0.6F, entering ? 1.15F : 1.0F, false);
+        }
+    }
+
+    // ---- A cloak field's shockwave ----
+
+    /**
+     * Draws a cloak field's shockwave, if one is running: static over the field's faces (from inside all of them, so it
+     * covers what the field hid; from outside the ones facing the eye), clearing in a sphere from where someone went
+     * through. {@code origin}: the projector, whose centre the pose is at.
+     */
+    public static void drawShock(String key, AABB box, BlockPos origin, PoseStack.Pose pose, MultiBufferSource buffers, float partialTick)
+    {
+        Shock shock = SHOCKS.get(key);
+        Minecraft mc = Minecraft.getInstance();
+        if(shock == null || mc.level == null)
+        {
+            return;
+        }
+        float age = mc.level.getGameTime() - shock.time() + partialTick;
+        if(age < 0F || age > SHOCK_TICKS)
+        {
+            return;
+        }
+        Vec3 eye = mc.gameRenderer.getMainCamera().getPosition();
+        boolean inside = box.contains(eye);
+        float x = age / SHOCK_TICKS;
+        int radius = Mth.clamp(Math.round(age * SHOCK_SPEED * 64F), 0, 32767);
+        int life = Mth.clamp(Math.round(x * x * 1000F), 0, 1000);
+        VertexConsumer consumer = buffers.getBuffer(GlassRenderTypes.SHOCK);
+        Vec3 centre = Vec3.atCenterOf(origin);
+        for(Direction face : Direction.values())
+        {
+            boolean seen = switch(face)
+            {
+                case NORTH -> eye.z < box.minZ;
+                case SOUTH -> eye.z > box.maxZ;
+                case WEST -> eye.x < box.minX;
+                case EAST -> eye.x > box.maxX;
+                case UP -> eye.y > box.maxY;
+                case DOWN -> eye.y < box.minY;
+            };
+            if(inside || seen)
+            {
+                shockFace(consumer, pose, box, face, shock.point(), centre, inside, radius, life);
+            }
+        }
+    }
+
+    /** One face of the field's box for the shockwave, with its corners measured from where the shock started. */
+    private static void shockFace(VertexConsumer consumer, PoseStack.Pose pose, AABB box, Direction face, Vec3 start, Vec3 centre, boolean inside,
+                                  int radius, int life)
+    {
+        //The face's plane, and the two axes across it.
+        Direction.Axis axis = face.getAxis();
+        double plane = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? box.max(axis) : box.min(axis);
+        Direction.Axis a = axis == Direction.Axis.X ? Direction.Axis.Z : Direction.Axis.X;
+        Direction.Axis b = axis == Direction.Axis.Y ? Direction.Axis.Z : Direction.Axis.Y;
+        int depth = Mth.clamp((int)Math.round(Math.abs(plane - start.get(axis)) * 32D), 0, 32767);
+        double[][] across = { { box.min(a), box.min(b) }, { box.max(a), box.min(b) }, { box.max(a), box.max(b) }, { box.min(a), box.max(b) } };
+        for(double[] c : across)
+        {
+            double[] p = new double[3];
+            p[axis.ordinal()] = plane;
+            p[a.ordinal()] = c[0];
+            p[b.ordinal()] = c[1];
+            consumer.addVertex(pose, (float)(p[0] - centre.x), (float)(p[1] - centre.y), (float)(p[2] - centre.z))
+                    .setColor(255, 255, 255, inside ? 255 : 128)
+                    .setUv((float)(c[0] - start.get(a)), (float)(c[1] - start.get(b)))
+                    .setUv1(depth, 0)
+                    .setUv2(radius, life)
+                    .setNormal(pose, 0F, 1F, 0F);
+        }
     }
 
     private static void ripple(String key, Vec3 point, long now, boolean through)

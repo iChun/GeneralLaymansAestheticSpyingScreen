@@ -186,6 +186,24 @@ public final class GlassRenderTypes
     public static final RenderType BACK = RenderType.create("glass_back", 1536, false, true, BACK_PIPELINE,
             RenderType.CompositeState.builder().createCompositeState(false));
 
+    /**
+     * A cloak field's shockwave when someone goes through it: glitchy static over the field, clearing from where they
+     * crossed (glass_shock). Without a depth test: from inside, it has to cover what the field hid, which stands between
+     * the eye and the walls.
+     */
+    public static final RenderPipeline SHOCK_PIPELINE = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET, RenderPipelines.GLOBALS_SNIPPET)
+            .withLocation(Glass.id("pipeline/glass_shock"))
+            .withVertexShader(Glass.id("core/glass_shock"))
+            .withFragmentShader(Glass.id("core/glass_shock"))
+            .withVertexFormat(DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS)
+            .withBlend(com.mojang.blaze3d.pipeline.BlendFunction.TRANSLUCENT)
+            .withDepthWrite(false)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withCull(false)
+            .build();
+    public static final RenderType SHOCK = RenderType.create("glass_shock", 1536, false, false, SHOCK_PIPELINE,
+            RenderType.CompositeState.builder().createCompositeState(false));
+
     /** A holo cube's scan: light and a grid running over the real room's faces, added on top (glass_scan). */
     public static final RenderPipeline SCAN_PIPELINE = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET, RenderPipelines.GLOBALS_SNIPPET)
             .withLocation(Glass.id("pipeline/glass_scan"))
