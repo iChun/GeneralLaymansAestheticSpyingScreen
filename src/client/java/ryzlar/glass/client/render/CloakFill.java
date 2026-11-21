@@ -550,11 +550,17 @@ public final class CloakFill
                 continue;
             }
             BlockState state = level.getBlockState(pos);
+            BlockPos above = pos.above();
+            if(isWaterSurface(state, level, above))
+            {
+                //Over water the "ground" is the water's surface (a cloaked boat or jetty leaves water, not a hole to
+                //the sea floor).
+                return new Column(y, state, state, null);
+            }
             if(!isGround(state, level, pos))
             {
                 continue;
             }
-            BlockPos above = pos.above();
             BlockState over = area.hidden().contains(Vec3.atCenterOf(above)) ? Blocks.AIR.defaultBlockState() : level.getBlockState(above);
             if(isGround(over, level, above))
             {
@@ -569,6 +575,17 @@ public final class CloakFill
      * Something to stand on: a block with a solid top, or one standing solidly on what is under it that is at least half
      * a block tall (paths and farmland are a little lower than a full block).
      */
+    /** Still water with nothing on it (or only what the cloak hides): the top of a sea, lake or river. */
+    private boolean isWaterSurface(BlockState state, ClientLevel level, BlockPos above)
+    {
+        if(!state.getFluidState().is(net.minecraft.tags.FluidTags.WATER) || !state.getFluidState().isSource())
+        {
+            return false;
+        }
+        BlockState over = area.hidden().contains(Vec3.atCenterOf(above)) ? Blocks.AIR.defaultBlockState() : level.getBlockState(above);
+        return over.getFluidState().isEmpty() && !isGround(over, level, above);
+    }
+
     private static boolean isGround(BlockState state, BlockAndTintGetter level, BlockPos pos)
     {
         if(state.isAir() || state.getRenderShape() != RenderShape.MODEL)
