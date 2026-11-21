@@ -275,9 +275,9 @@ public class GlassClientGameTest implements FabricClientGameTest
     @Override
     public void runTest(ClientGameTestContext context)
     {
-        if("stress".equals(System.getenv("GLASS_TEST_ONLY")))
+        if("stress".equals(System.getenv("GLASS_TEST_ONLY")) || "showcase".equals(System.getenv("GLASS_TEST_ONLY")))
         {
-            return; //only GlassClientStressTest
+            return; //only GlassClientStressTest or GlassShowcase
         }
         try(TestSingleplayerContext singleplayer = context.worldBuilder().create())
         {

@@ -7,7 +7,8 @@
   "entrypoints": {
     "fabric-client-gametest": [
       "ryzlar.glass.test.GlassClientGameTest",
-      "ryzlar.glass.test.GlassClientStressTest"
+      "ryzlar.glass.test.GlassClientStressTest",
+      "ryzlar.glass.test.GlassShowcase"
     ],
     "fabric-gametest": [
       "ryzlar.glass.test.GlassServerGameTest",

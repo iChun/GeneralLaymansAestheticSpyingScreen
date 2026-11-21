@@ -17,3 +17,6 @@
 /run
 /out
 .architectury-transformer
+
+# Store media (screenshots, trailer): too big for the repo
+/promo/
